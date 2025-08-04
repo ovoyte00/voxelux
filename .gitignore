@@ -1,0 +1,5 @@
+build/
+.idea/
+*.user
+.DS_Store
+.cursor/
