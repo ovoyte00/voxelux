@@ -42,13 +42,20 @@ private:
     void createSphereGeometry();
     void regenerateSortedWidget(const QMatrix4x4& camera_view);
     
-    // Helper methods for 3D geometry generation (matching working implementation)
+    // Helper methods for geometry generation (Blender-style approach)
     void generateCylindricalLine(float x1, float y1, float z1, float x2, float y2, float z2,
                                 const float color[3], float alpha, float radius);
     void generateSphere(float cx, float cy, float cz, float radius,
                        const float color[3], float alpha, int lat_segments, int lon_segments);
     void generateSphereOutline(float cx, float cy, float cz, float radius,
                               const float color[3], float alpha, int lat_segments, int lon_segments, float outline_width);
+    void generateSimpleLine(float x1, float y1, float z1, float x2, float y2, float z2,
+                           const float color[3], float alpha, float line_width);
+    void renderScreenSpaceBillboards(const QMatrix4x4& model, const QMatrix4x4& view, const QMatrix4x4& projection);
+    void renderScreenSpaceElements(const QMatrix4x4& model, const QMatrix4x4& view, const QMatrix4x4& projection);
+    void generateScreenSpaceCircle(float cx, float cy, float radius, float r, float g, float b, float alpha, std::vector<float>& vertices);
+    void generateScreenSpaceHollowCircle(float cx, float cy, float radius, float r, float g, float b, float inner_alpha, float outer_alpha, std::vector<float>& vertices);
+    void generateScreenSpaceLine(float x1, float y1, float x2, float y2, float width, float r, float g, float b, float alpha, std::vector<float>& vertices);
     
     // Sphere data for axis indicators
     struct AxisSphere {
@@ -57,6 +64,23 @@ private:
         float depth;   // Depth value for sorting
         QVector3D position;
         QVector3D color;
+    };
+    
+    // Billboard data for screen-space rendering like Blender
+    struct BillboardData {
+        QVector3D position; // 3D world position
+        float radius;       // Screen-space radius
+        QVector3D color;    // RGB color
+        bool positive;      // true for solid, false for hollow
+        float depth;        // Depth for sorting
+    };
+    
+    // Line data for screen-space rendering like Blender
+    struct LineData {
+        QVector3D start;    // 3D world start position
+        QVector3D end;      // 3D world end position  
+        QVector3D color;    // RGB color
+        float alpha;        // Line alpha
     };
     
     // Shader programs
@@ -76,6 +100,8 @@ private:
     // Sphere data
     std::array<AxisSphere, 6> sphere_data_;
     std::vector<float> sphere_template_; // Template sphere vertices
+    std::vector<BillboardData> billboard_data_; // Billboard data for screen-space rendering
+    std::vector<LineData> line_data_; // Line data for screen-space rendering
     
     // Appearance settings
     QVector3D axis_colors_[3] = {
