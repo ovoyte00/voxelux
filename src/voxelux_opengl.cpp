@@ -32,6 +32,7 @@
 #include <vector>
 #include <memory>
 #include <cmath>
+#include "viewport_nav_widget.h"
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -46,8 +47,8 @@ private:
     
 public:
     VoxelCamera() {
-        // Initialize with professional 3D editing view: looking down at grid from above
-        // Start with view showing +X (right) and +Z (forward) - standard 3D orientation
+        // Initialize with 45-degree isometric view: X diagonal bottom-left, Z diagonal bottom-right
+        // Y-axis up/down, looking from above
         rotation_ = QQuaternion::fromEulerAngles(-30.0f, 45.0f, 0.0f);
     }
     
@@ -98,6 +99,11 @@ public:
         distance_ = qBound(0.1f, distance_, 5000.0f);
     }
     
+    void set_rotation(const QQuaternion& rotation) {
+        rotation_ = rotation;
+        rotation_.normalize();
+    }
+    
     float get_distance() const { return distance_; }
     void set_distance(float distance) { distance_ = qBound(1.0f, distance, 5000.0f); }
     
@@ -141,6 +147,9 @@ public:
         
         // Detect system scroll direction preference (Blender-style)
         detectScrollDirection();
+        
+        // Create navigation widget
+        nav_widget_ = std::make_unique<ViewportNavWidget>(this);
     }
 
 private:
@@ -161,30 +170,8 @@ private:
     std::vector<float> grid_vertices_;
     int vertex_count_ = 0;
     
-    // Viewport widget system
-    QOpenGLVertexArrayObject widget_vao_;
-    QOpenGLBuffer widget_vertex_buffer_;
-    QOpenGLBuffer widget_vbo_;
-    QOpenGLShaderProgram widget_shader_program_;
-    std::vector<float> widget_vertices_;
-    int widget_vertex_count_ = 0;
-    float widget_center_x_ = 0.0f;
-    float widget_center_y_ = 0.0f;
-    float widget_radius_ = 0.0f;
-    
-    // Theme system handles all colors and styling
-    
-    // Sphere data for text rendering and hover detection
-    struct AxisSphere {
-        float pos[3];
-        float color[3];  // Store colors directly instead of pointer
-        bool is_positive;
-        char label;
-        int axis_index;
-        float depth;
-    };
-    std::vector<AxisSphere> sphere_data_;
-    int hovered_sphere_ = -1;
+    // Viewport widgets
+    std::unique_ptr<ViewportNavWidget> nav_widget_;
     
     // Gesture tracking
     float gesture_start_distance_ = 0.0f;
@@ -193,689 +180,12 @@ private:
     // Scroll direction handling
     bool natural_scroll_direction_ = false;
     
-    void render_debug_widget() {
-        // Working navigation widget using widget shader
-        GLboolean depth_test_enabled = glIsEnabled(GL_DEPTH_TEST);
-        GLboolean blend_enabled = glIsEnabled(GL_BLEND);
-        
-        glDisable(GL_DEPTH_TEST);
-        glEnable(GL_BLEND);
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-        
-        widget_shader_program_.bind();
-        
-        // Widget positioning in bottom-right
-        const float widget_size = 80.0f;
-        const float margin = 30.0f;
-        float widget_center_x = width() - margin - widget_size/2;
-        float widget_center_y = margin + widget_size/2;
-        
-        // Set up matrices similar to successful test
-        QMatrix4x4 widget_model, widget_view, widget_projection;
-        
-        // Screen-space orthographic 
-        widget_projection.ortho(0.0f, float(width()), 0.0f, float(height()), -100.0f, 100.0f);
-        
-        // Position and scale widget
-        widget_view.translate(widget_center_x, widget_center_y, 0.0f);
-        widget_view.scale(widget_size/2.0f);  // Scale to fit
-        
-        // Apply camera rotation to widget
-        QMatrix4x4 camera_view = camera_.get_view_matrix();
-        for (int i = 0; i < 3; i++) {
-            for (int j = 0; j < 3; j++) {
-                widget_model(i, j) = camera_view(i, j);
-            }
-        }
-        widget_model(3, 3) = 1.0f;
-        
-        widget_shader_program_.setUniformValue("model", widget_model);
-        widget_shader_program_.setUniformValue("view", widget_view);
-        widget_shader_program_.setUniformValue("projection", widget_projection);
-        
-        // Generate sphere and line geometry like Blender
-        std::vector<float> widget_verts;
-        const float axis_distance = 1.0f;  // Further apart like Blender
-        const float sphere_size = 0.12f;   // Circle size
-        const float line_width = 0.05f;    // A hair thicker tubes
-        
-        // Helper to add a proper 3D cylindrical line (like Blender)
-        auto add_cylindrical_line = [&](float x1, float y1, float z1, float x2, float y2, float z2, float r, float g, float b, float a) {
-            float radius = line_width / 2.0f;
-            int segments = 8; // 8-sided cylinder
-            
-            // Calculate cylinder direction vector
-            float dx = x2 - x1, dy = y2 - y1, dz = z2 - z1;
-            float length = sqrt(dx*dx + dy*dy + dz*dz);
-            if (length < 0.001f) return;
-            
-            dx /= length; dy /= length; dz /= length;
-            
-            // Find perpendicular vectors for cylinder cross-section
-            float ux = (abs(dx) < 0.9f) ? 1.0f : 0.0f;
-            float uy = (abs(dy) < 0.9f) ? 1.0f : 0.0f; 
-            float uz = (abs(dz) < 0.9f) ? 1.0f : 0.0f;
-            
-            // Cross product to get perpendicular
-            float px = dy * uz - dz * uy;
-            float py = dz * ux - dx * uz;
-            float pz = dx * uy - dy * ux;
-            float plen = sqrt(px*px + py*py + pz*pz);
-            px /= plen; py /= plen; pz /= plen;
-            
-            // Another perpendicular
-            float qx = dy * pz - dz * py;
-            float qy = dz * px - dx * pz;
-            float qz = dx * py - dy * px;
-            
-            // Generate cylinder triangles
-            for (int i = 0; i < segments; i++) {
-                float angle1 = 2.0f * M_PI * i / segments;
-                float angle2 = 2.0f * M_PI * (i + 1) / segments;
-                
-                float c1 = cos(angle1) * radius, s1 = sin(angle1) * radius;
-                float c2 = cos(angle2) * radius, s2 = sin(angle2) * radius;
-                
-                // Side quad (2 triangles)
-                float v1x = x1 + px * c1 + qx * s1, v1y = y1 + py * c1 + qy * s1, v1z = z1 + pz * c1 + qz * s1;
-                float v2x = x2 + px * c1 + qx * s1, v2y = y2 + py * c1 + qy * s1, v2z = z2 + pz * c1 + qz * s1;
-                float v3x = x2 + px * c2 + qx * s2, v3y = y2 + py * c2 + qy * s2, v3z = z2 + pz * c2 + qz * s2;
-                float v4x = x1 + px * c2 + qx * s2, v4y = y1 + py * c2 + qy * s2, v4z = z1 + pz * c2 + qz * s2;
-                
-                // Triangle 1
-                widget_verts.insert(widget_verts.end(), {
-                    v1x, v1y, v1z, r, g, b, a,
-                    v2x, v2y, v2z, r, g, b, a,
-                    v3x, v3y, v3z, r, g, b, a,
-                });
-                
-                // Triangle 2
-                widget_verts.insert(widget_verts.end(), {
-                    v1x, v1y, v1z, r, g, b, a,
-                    v3x, v3y, v3z, r, g, b, a,
-                    v4x, v4y, v4z, r, g, b, a,
-                });
-            }
-        };
-        
-        // Helper to add a circular sphere (like Blender)
-        auto add_circle_sphere = [&](float x, float y, float z, float r, float g, float b, float a, bool filled = true) {
-            int segments = 16; // Smooth circles
-            float radius = sphere_size;
-            
-            if (filled) {
-                // Filled circle for positive axes
-                for (int i = 0; i < segments; i++) {
-                    float angle1 = 2.0f * M_PI * i / segments;
-                    float angle2 = 2.0f * M_PI * (i + 1) / segments;
-                    
-                    // Triangle fan from center
-                    widget_verts.insert(widget_verts.end(), {
-                        x, y, z, r, g, b, a, // Center
-                        x + radius * cos(angle1), y + radius * sin(angle1), z, r, g, b, a,
-                        x + radius * cos(angle2), y + radius * sin(angle2), z, r, g, b, a,
-                    });
-                }
-            } else {
-                // Hollow circle for negative axes (ring)
-                float inner_radius = radius * 0.6f;
-                for (int i = 0; i < segments; i++) {
-                    float angle1 = 2.0f * M_PI * i / segments;
-                    float angle2 = 2.0f * M_PI * (i + 1) / segments;
-                    
-                    float c1 = cos(angle1), s1 = sin(angle1);
-                    float c2 = cos(angle2), s2 = sin(angle2);
-                    
-                    // Outer triangle
-                    widget_verts.insert(widget_verts.end(), {
-                        x + radius * c1, y + radius * s1, z, r, g, b, a,
-                        x + radius * c2, y + radius * s2, z, r, g, b, a,
-                        x + inner_radius * c1, y + inner_radius * s1, z, r, g, b, a,
-                    });
-                    
-                    // Inner triangle
-                    widget_verts.insert(widget_verts.end(), {
-                        x + radius * c2, y + radius * s2, z, r, g, b, a,
-                        x + inner_radius * c2, y + inner_radius * s2, z, r, g, b, a,
-                        x + inner_radius * c1, y + inner_radius * s1, z, r, g, b, a,
-                    });
-                }
-            }
-        };
-        
-        // Add true 3D cylindrical lines from center to positive axes only (like Blender)
-        float line_end = axis_distance - sphere_size; // End before spheres
-        
-        // Your preferred colors: #F54250 (red), #69C206 (green), #3987DB (blue)
-        float red_r = 0.96f, red_g = 0.26f, red_b = 0.31f;     // #F54250
-        float green_r = 0.41f, green_g = 0.76f, green_b = 0.02f; // #69C206  
-        float blue_r = 0.22f, blue_g = 0.53f, blue_b = 0.86f;   // #3987DB
-        
-        add_cylindrical_line(0.0f, 0.0f, 0.0f, line_end, 0.0f, 0.0f, red_r, red_g, red_b, 0.8f);      // X line
-        add_cylindrical_line(0.0f, 0.0f, 0.0f, 0.0f, line_end, 0.0f, green_r, green_g, green_b, 0.8f); // Y line  
-        add_cylindrical_line(0.0f, 0.0f, 0.0f, 0.0f, 0.0f, line_end, blue_r, blue_g, blue_b, 0.8f);    // Z line
-        
-        // Add circles for each axis (filled for positive, hollow for negative)
-        add_circle_sphere(axis_distance, 0.0f, 0.0f, red_r, red_g, red_b, 0.9f, true);      // +X red filled
-        add_circle_sphere(-axis_distance, 0.0f, 0.0f, red_r, red_g, red_b, 0.8f, false);    // -X red hollow
-        add_circle_sphere(0.0f, axis_distance, 0.0f, green_r, green_g, green_b, 0.9f, true); // +Y green filled
-        add_circle_sphere(0.0f, -axis_distance, 0.0f, green_r, green_g, green_b, 0.8f, false); // -Y green hollow
-        add_circle_sphere(0.0f, 0.0f, axis_distance, blue_r, blue_g, blue_b, 0.9f, true);    // +Z blue filled
-        add_circle_sphere(0.0f, 0.0f, -axis_distance, blue_r, blue_g, blue_b, 0.8f, false);  // -Z blue hollow
-        
-        // Render all widget geometry (lines + spheres)
-        QOpenGLVertexArrayObject widget_vao;
-        QOpenGLBuffer widget_vbo;
-        widget_vao.create();
-        widget_vao.bind();
-        widget_vbo.create();
-        widget_vbo.bind();
-        widget_vbo.allocate(widget_verts.data(), widget_verts.size() * sizeof(float));
-        
-        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 7 * sizeof(float), nullptr);
-        glEnableVertexAttribArray(0);
-        glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, 7 * sizeof(float), (void*)(3 * sizeof(float)));
-        glEnableVertexAttribArray(1);
-        
-        glDrawArrays(GL_TRIANGLES, 0, widget_verts.size() / 7);
-        
-        widget_vbo.release();
-        widget_vao.release();
-        widget_shader_program_.release();
-        
-        // Restore GL state
-        if (depth_test_enabled) glEnable(GL_DEPTH_TEST);
-        if (!blend_enabled) glDisable(GL_BLEND);
-    }
 
-    void render_simple_navigation_widget() {
-        // Simple modern OpenGL widget that won't interfere with grid
-        // Save GL state
-        GLboolean depth_test_enabled = glIsEnabled(GL_DEPTH_TEST);
-        GLboolean blend_enabled = glIsEnabled(GL_BLEND);
-        
-        glDisable(GL_DEPTH_TEST);
-        glEnable(GL_BLEND);
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-        
-        // Use the same shader as the grid to avoid state conflicts
-        shader_program_.bind();
-        
-        // Simple widget in bottom-right corner
-        const float widget_size = 60.0f;
-        const float margin = 20.0f;
-        float widget_x = width() - margin - widget_size;
-        float widget_y = margin;
-        
-        // 2D orthographic setup
-        QMatrix4x4 widget_model, widget_view, widget_projection;
-        widget_projection.ortho(0.0f, float(width()), 0.0f, float(height()), -1.0f, 1.0f);
-        
-        // Position widget
-        widget_view.translate(widget_x + widget_size/2, widget_y + widget_size/2, 0);
-        
-        // Apply camera rotation  
-        QMatrix4x4 camera_view = camera_.get_view_matrix();
-        for (int i = 0; i < 3; i++) {
-            for (int j = 0; j < 3; j++) {
-                widget_model(i, j) = camera_view(i, j);
-            }
-        }
-        widget_model(3, 3) = 1.0f;
-        
-        // Set uniforms (same as grid shader)
-        shader_program_.setUniformValue("model", widget_model);
-        shader_program_.setUniformValue("view", widget_view);
-        shader_program_.setUniformValue("projection", widget_projection);
-        
-        // Create simple quad vertices for each axis
-        const float axis_distance = 20.0f;
-        const float quad_size = 8.0f;
-        
-        // Generate simple quad geometry
-        std::vector<float> widget_verts;
-        
-        // +X axis (red quad)
-        float red_color[] = {0.9f, 0.2f, 0.2f, 0.9f};
-        float x_pos[] = {axis_distance, 0.0f, 0.0f};
-        for (int i = 0; i < 6; i++) { // 2 triangles = 6 vertices
-            float vx[] = {-quad_size/2, quad_size/2, quad_size/2, -quad_size/2, quad_size/2, -quad_size/2};
-            float vy[] = {-quad_size/2, -quad_size/2, quad_size/2, -quad_size/2, quad_size/2, quad_size/2};
-            widget_verts.push_back(x_pos[0] + vx[i]); // X
-            widget_verts.push_back(x_pos[1] + vy[i]); // Y  
-            widget_verts.push_back(x_pos[2]); // Z
-            widget_verts.push_back(red_color[0]); // R
-            widget_verts.push_back(red_color[1]); // G
-            widget_verts.push_back(red_color[2]); // B
-            widget_verts.push_back(red_color[3]); // A
-        }
-        
-        // Create temporary VAO/VBO
-        QOpenGLVertexArrayObject temp_vao;
-        QOpenGLBuffer temp_vbo;
-        temp_vao.create();
-        temp_vao.bind();
-        temp_vbo.create();
-        temp_vbo.bind();
-        temp_vbo.allocate(widget_verts.data(), widget_verts.size() * sizeof(float));
-        
-        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 7 * sizeof(float), nullptr);
-        glEnableVertexAttribArray(0);
-        glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, 7 * sizeof(float), (void*)(3 * sizeof(float)));
-        glEnableVertexAttribArray(1);
-        
-        glDrawArrays(GL_TRIANGLES, 0, 6);
-        
-        temp_vbo.release();
-        temp_vao.release();
-        
-        shader_program_.release();
-        
-        // Restore GL state
-        if (depth_test_enabled) glEnable(GL_DEPTH_TEST);
-        if (!blend_enabled) glDisable(GL_BLEND);
-    }
 
-    void render_viewport_widget() {
-        // Skip rendering if widget isn't properly initialized
-        if (widget_vertex_count_ <= 0 || !widget_vao_.isCreated()) {
-            return;
-        }
-        
-        // Save current GL state
-        GLboolean depth_test_enabled = glIsEnabled(GL_DEPTH_TEST);
-        GLboolean blend_enabled = glIsEnabled(GL_BLEND);
-        
-        // Disable depth test for widget overlay
-        glDisable(GL_DEPTH_TEST);
-        glEnable(GL_BLEND);
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-        
-        // Set up widget rendering
-        widget_shader_program_.bind();
-        
-        // Create widget matrices
-        QMatrix4x4 widget_model;
-        QMatrix4x4 widget_view;
-        QMatrix4x4 widget_projection;
-        
-        // Widget positioning and size (larger for better visibility)
-        const float widget_size = 80.0f; // Larger size like Blender
-        const float margin = 35.0f; // Margin from edges
-        widget_center_x_ = float(width()) - margin - widget_size/2;
-        widget_center_y_ = margin + widget_size/2;
-        widget_radius_ = widget_size/2.0f;
-        
-        // Screen-space orthographic projection
-        widget_projection.ortho(0.0f, float(width()), 0.0f, float(height()), -100.0f, 100.0f);
-        
-        
-        // Position the widget
-        widget_view.translate(widget_center_x_, widget_center_y_, 0.0f);
-        widget_view.scale(widget_radius_);
-        
-        // Apply camera rotation - but we want orthographic rendering
-        QMatrix4x4 camera_view = camera_.get_view_matrix();
-        
-        // Extract just the rotation part for the widget
-        for (int i = 0; i < 3; i++) {
-            for (int j = 0; j < 3; j++) {
-                widget_model(i, j) = camera_view(i, j);
-            }
-        }
-        widget_model(3, 3) = 1.0f;
-        
-        
-        // Set uniforms for main widget
-        widget_shader_program_.setUniformValue("model", widget_model);
-        widget_shader_program_.setUniformValue("view", widget_view);
-        widget_shader_program_.setUniformValue("projection", widget_projection);
-        
-        // Calculate depth for each sphere using camera matrix for sorting
-        float min_depth = FLT_MAX, max_depth = -FLT_MAX;
-        for (int i = 0; i < sphere_data_.size(); i++) {
-            AxisSphere& sphere = sphere_data_[i];
-            // Transform sphere position by camera view matrix to get depth (Z component)
-            QVector4D pos(sphere.pos[0], sphere.pos[1], sphere.pos[2], 1.0f);
-            QVector4D transformed = camera_view * pos;
-            sphere.depth = transformed.z(); // Raw depth
-            min_depth = qMin(min_depth, sphere.depth);
-            max_depth = qMax(max_depth, sphere.depth);
-        }
-        
-        // Normalize depth values to [-1, 1] range like Blender expects
-        float depth_range = max_depth - min_depth;
-        if (depth_range > 0.0f) {
-            for (int i = 0; i < sphere_data_.size(); i++) {
-                AxisSphere& sphere = sphere_data_[i];
-                // Normalize to [-1, 1] range
-                sphere.depth = 2.0f * ((sphere.depth - min_depth) / depth_range) - 1.0f;
-            }
-        } else {
-            // All spheres at same depth
-            for (int i = 0; i < sphere_data_.size(); i++) {
-                sphere_data_[i].depth = 0.0f;
-            }
-        }
-        
-        // Sort spheres by depth (back-to-front rendering for proper alpha blending)
-        std::sort(sphere_data_.begin(), sphere_data_.end(), [](const AxisSphere& a, const AxisSphere& b) {
-            return a.depth < b.depth; // Render furthest first (smallest Z)
-        });
-        
-        // Regenerate vertex buffer with sorted spheres
-        regenerate_sorted_widget(camera_view);
-        
-        // Render main widget
-        widget_vao_.bind();
-        if (widget_vertex_count_ > 0) {
-            // Reset buffer to widget data
-            widget_vbo_.bind();
-            glBufferSubData(GL_ARRAY_BUFFER, 0, widget_vertices_.size() * sizeof(float), widget_vertices_.data());
-            widget_vbo_.release();
-            
-            glDrawArrays(GL_TRIANGLES, 0, widget_vertex_count_);
-        }
-        widget_vao_.release();
-        
-        widget_shader_program_.release();
-        
-        // TODO: Add OpenGL-based text rendering instead of QPainter to avoid state corruption
-        // render_sphere_labels(widget_projection, widget_view, widget_model);
-        
-        // Restore GL state
-        if (depth_test_enabled) glEnable(GL_DEPTH_TEST);
-        if (!blend_enabled) glDisable(GL_BLEND);
-    }
     
-    void render_sphere_labels(const QMatrix4x4& projection, const QMatrix4x4& view, const QMatrix4x4& model) {
-        // Simple text rendering using QPainter overlay (basic implementation)
-        QPainter painter(this);
-        painter.setRenderHint(QPainter::Antialiasing);
-        
-        // Calculate MVP matrix
-        QMatrix4x4 mvp = projection * view * model; 
-        
-        for (int i = 0; i < sphere_data_.size(); i++) {
-            const AxisSphere& sphere = sphere_data_[i];
-            
-            // Determine if this sphere should show text
-            bool show_text = sphere.is_positive; // Only show text on positive axes for now
-            QColor text_color = Qt::black;
-            
-            if (show_text) {
-                // Project sphere position to screen
-                QVector4D sphere_pos(sphere.pos[0], sphere.pos[1], sphere.pos[2], 1.0f);
-                QVector4D screen_pos = mvp * sphere_pos;
-                
-                if (screen_pos.w() > 0) {
-                    screen_pos /= screen_pos.w();
-                    int x = (screen_pos.x() + 1.0f) * 0.5f * width();
-                    int y = (1.0f - screen_pos.y()) * 0.5f * height();
-                    
-                    // Prepare text
-                    QString label;
-                    if (sphere.is_positive) {
-                        label = QString(sphere.label);
-                    } else {
-                        label = QString("-%1").arg(sphere.label);
-                    }
-                    
-                    // Set font and color
-                    QFont font = painter.font();
-                    font.setPointSize(10);
-                    font.setBold(true);
-                    painter.setFont(font);
-                    painter.setPen(text_color);
-                    
-                    // Draw text centered on sphere
-                    QFontMetrics fm(font);
-                    int text_width = fm.horizontalAdvance(label);
-                    int text_height = fm.height();
-                    
-                    painter.drawText(x - text_width/2, y + text_height/4, label);
-                }
-            }
-        }
-        
-        painter.end();
-    }
     
 
-    void generate_viewport_widget() {
-        widget_vertices_.clear();
-        
-        // Navigation widget with spheres and cylindrical lines (Blender approach)
-        const float axis_distance = 0.85f;  // Distance from center to spheres
-        const float sphere_radius = 0.18f;  // Sphere size
-        const float line_radius = 0.025f;   // Slightly thicker cylindrical lines
-        const int circle_segments = 32;     // Smooth circles
-        
-        // Get axis colors from theme system
-        const auto& x_color = Colors::XAxis();
-        const auto& y_color = Colors::YAxis();
-        const auto& z_color = Colors::ZAxis();
-        
-        // Generate cylindrical lines from center to positive axes only (like Blender)
-        const float line_end_offset = sphere_radius * 0.1f; // Small offset so line touches sphere
-        
-        // Lines meet exactly at center (0,0,0) and extend to spheres
-        // +X axis line (center to +X)
-        generate_cylindrical_line(0.0f, 0.0f, 0.0f, 
-                                 axis_distance - line_end_offset, 0.0f, 0.0f,
-                                 x_color.data(), Theme::instance().alpha().line, line_radius);
-        // +Y axis line (center to +Y)
-        generate_cylindrical_line(0.0f, 0.0f, 0.0f,
-                                 0.0f, axis_distance - line_end_offset, 0.0f,
-                                 y_color.data(), Theme::instance().alpha().line, line_radius);
-        // +Z axis line (center to +Z)
-        generate_cylindrical_line(0.0f, 0.0f, 0.0f,
-                                 0.0f, 0.0f, axis_distance - line_end_offset,
-                                 z_color.data(), Theme::instance().alpha().line, line_radius);
-        
-        // Note: Depth sorting will be done in render function where camera is accessible
-        
-        // Store sphere data for text rendering and hover detection
-        sphere_data_.clear();
-        sphere_data_.resize(6);
-        
-        // Populate sphere data
-        AxisSphere& sphere0 = sphere_data_[0];
-        sphere0.pos[0] = axis_distance; sphere0.pos[1] = 0.0f; sphere0.pos[2] = 0.0f;
-        sphere0.color[0] = x_color[0]; sphere0.color[1] = x_color[1]; sphere0.color[2] = x_color[2];
-        sphere0.is_positive = true; sphere0.label = 'X'; sphere0.axis_index = 0; sphere0.depth = 0.0f;
-        
-        AxisSphere& sphere1 = sphere_data_[1];  
-        sphere1.pos[0] = -axis_distance; sphere1.pos[1] = 0.0f; sphere1.pos[2] = 0.0f;
-        sphere1.color[0] = x_color[0]; sphere1.color[1] = x_color[1]; sphere1.color[2] = x_color[2];
-        sphere1.is_positive = false; sphere1.label = 'X'; sphere1.axis_index = 0; sphere1.depth = 0.0f;
-        
-        AxisSphere& sphere2 = sphere_data_[2];
-        sphere2.pos[0] = 0.0f; sphere2.pos[1] = axis_distance; sphere2.pos[2] = 0.0f;
-        sphere2.color[0] = y_color[0]; sphere2.color[1] = y_color[1]; sphere2.color[2] = y_color[2];
-        sphere2.is_positive = true; sphere2.label = 'Y'; sphere2.axis_index = 1; sphere2.depth = 0.0f;
-        
-        AxisSphere& sphere3 = sphere_data_[3];
-        sphere3.pos[0] = 0.0f; sphere3.pos[1] = -axis_distance; sphere3.pos[2] = 0.0f;
-        sphere3.color[0] = y_color[0]; sphere3.color[1] = y_color[1]; sphere3.color[2] = y_color[2];
-        sphere3.is_positive = false; sphere3.label = 'Y'; sphere3.axis_index = 1; sphere3.depth = 0.0f;
-        
-        AxisSphere& sphere4 = sphere_data_[4];
-        sphere4.pos[0] = 0.0f; sphere4.pos[1] = 0.0f; sphere4.pos[2] = axis_distance;
-        sphere4.color[0] = z_color[0]; sphere4.color[1] = z_color[1]; sphere4.color[2] = z_color[2];
-        sphere4.is_positive = true; sphere4.label = 'Z'; sphere4.axis_index = 2; sphere4.depth = 0.0f;
-        
-        AxisSphere& sphere5 = sphere_data_[5];
-        sphere5.pos[0] = 0.0f; sphere5.pos[1] = 0.0f; sphere5.pos[2] = -axis_distance;
-        sphere5.color[0] = z_color[0]; sphere5.color[1] = z_color[1]; sphere5.color[2] = z_color[2];
-        sphere5.is_positive = false; sphere5.label = 'Z'; sphere5.axis_index = 2; sphere5.depth = 0.0f;
-        
-        // Generate 3D spheres
-        for (int i = 0; i < 6; i++) {
-            const AxisSphere& sphere = sphere_data_[i];
-            
-            if (sphere.is_positive) {
-                // Solid sphere for positive axes
-                generate_sphere(sphere.pos[0], sphere.pos[1], sphere.pos[2],
-                               sphere_radius, sphere.color, Colors::PositiveSphere(), 16, 16);
-            } else {
-                // Hollow sphere for negative axes with lower opacity
-                generate_sphere_outline(sphere.pos[0], sphere.pos[1], sphere.pos[2],
-                                       sphere_radius, sphere.color, Colors::NegativeFill(), 12, 12, 0.03f);
-            }
-        }
-        
-        // Store vertex count
-        widget_vertex_count_ = widget_vertices_.size() / 7;
-        qDebug() << "Generated navigation widget with" << widget_vertex_count_ << "vertices";
-    }
     
-    void regenerate_sorted_widget(const QMatrix4x4& camera_view) {
-        // Clear existing vertex data
-        widget_vertices_.clear();
-        
-        // Navigation widget parameters matching generate_viewport_widget()
-        const float axis_distance = 0.85f;
-        const float sphere_radius = 0.18f; // Sphere size
-        const float line_radius = 0.025f;
-        
-        // Get axis colors from theme system
-        const auto& x_color = Colors::XAxis();
-        const auto& y_color = Colors::YAxis();
-        const auto& z_color = Colors::ZAxis();
-        
-        // Extract camera forward direction from view matrix
-        QVector3D camera_forward = -QVector3D(camera_view(0, 2), camera_view(1, 2), camera_view(2, 2)).normalized();
-        
-        // Generate cylindrical lines from center to positive axes only (same as original)
-        const float line_end_offset = sphere_radius * 0.1f; // Small offset so line touches sphere
-        
-        // +X axis line
-        generate_cylindrical_line(0.0f, 0.0f, 0.0f, 
-                                 axis_distance - line_end_offset, 0.0f, 0.0f,
-                                 x_color.data(), Theme::instance().alpha().line, line_radius);
-        // +Y axis line
-        generate_cylindrical_line(0.0f, 0.0f, 0.0f,
-                                 0.0f, axis_distance - line_end_offset, 0.0f,
-                                 y_color.data(), Theme::instance().alpha().line, line_radius);
-        // +Z axis line
-        generate_cylindrical_line(0.0f, 0.0f, 0.0f,
-                                 0.0f, 0.0f, axis_distance - line_end_offset,
-                                 z_color.data(), Theme::instance().alpha().line, line_radius);
-        
-        // Generate spheres in sorted order (back-to-front for proper transparency)
-        for (const AxisSphere& sphere : sphere_data_) {
-            if (sphere.is_positive) {
-                // Solid sphere for positive axes
-                generate_sphere(sphere.pos[0], sphere.pos[1], sphere.pos[2],
-                               sphere_radius, sphere.color, Colors::PositiveSphere(), 16, 16);
-            } else {
-                // Hollow sphere for negative axes with lower fill opacity and visible outline
-                generate_sphere_outline(sphere.pos[0], sphere.pos[1], sphere.pos[2],
-                                       sphere_radius, sphere.color, Colors::NegativeFill(), 12, 12, 0.03f, camera_forward);
-            }
-        }
-        
-        // Update vertex count
-        widget_vertex_count_ = widget_vertices_.size() / 7;
-    }
-    
-    void generate_cylindrical_line(float x1, float y1, float z1, float x2, float y2, float z2,
-                                  const float color[3], float alpha, float radius) {
-        // Create a proper 3D cylinder for the line
-        QVector3D start(x1, y1, z1);
-        QVector3D end(x2, y2, z2);
-        QVector3D dir = (end - start).normalized();
-        float length = (end - start).length();
-        
-        // Find perpendicular vectors for cylinder cross-section
-        QVector3D perp1 = QVector3D::crossProduct(dir, QVector3D(0, 1, 0)).normalized();
-        if (perp1.length() < 0.01f) {
-            perp1 = QVector3D::crossProduct(dir, QVector3D(1, 0, 0)).normalized();
-        }
-        QVector3D perp2 = QVector3D::crossProduct(dir, perp1).normalized();
-        
-        // Generate cylinder with 8 sides
-        const int sides = 8;
-        for (int i = 0; i < sides; i++) {
-            float angle1 = 2.0f * M_PI * i / sides;
-            float angle2 = 2.0f * M_PI * (i + 1) / sides;
-            
-            // Calculate positions on cylinder
-            QVector3D p1 = perp1 * (radius * cos(angle1)) + perp2 * (radius * sin(angle1));
-            QVector3D p2 = perp1 * (radius * cos(angle2)) + perp2 * (radius * sin(angle2));
-            
-            // Two triangles for this side of cylinder
-            widget_vertices_.insert(widget_vertices_.end(), {
-                // First triangle
-                start.x() + p1.x(), start.y() + p1.y(), start.z() + p1.z(), color[0], color[1], color[2], alpha,
-                end.x() + p1.x(), end.y() + p1.y(), end.z() + p1.z(), color[0], color[1], color[2], alpha,
-                start.x() + p2.x(), start.y() + p2.y(), start.z() + p2.z(), color[0], color[1], color[2], alpha,
-                
-                // Second triangle
-                start.x() + p2.x(), start.y() + p2.y(), start.z() + p2.z(), color[0], color[1], color[2], alpha,
-                end.x() + p1.x(), end.y() + p1.y(), end.z() + p1.z(), color[0], color[1], color[2], alpha,
-                end.x() + p2.x(), end.y() + p2.y(), end.z() + p2.z(), color[0], color[1], color[2], alpha
-            });
-        }
-    }
-    
-    void generate_sphere(float cx, float cy, float cz, float radius,
-                        const float color[3], float alpha, int lat_segments, int lon_segments) {
-        // Generate solid 3D sphere
-        for (int lat = 0; lat < lat_segments; lat++) {
-            for (int lon = 0; lon < lon_segments; lon++) {
-                // Calculate sphere coordinates
-                float phi1 = M_PI * lat / lat_segments;
-                float phi2 = M_PI * (lat + 1) / lat_segments;
-                float theta1 = 2.0f * M_PI * lon / lon_segments;
-                float theta2 = 2.0f * M_PI * (lon + 1) / lon_segments;
-                
-                // Calculate vertices
-                QVector3D v1(cx + radius * sin(phi1) * cos(theta1),
-                            cy + radius * cos(phi1),
-                            cz + radius * sin(phi1) * sin(theta1));
-                QVector3D v2(cx + radius * sin(phi1) * cos(theta2),
-                            cy + radius * cos(phi1),
-                            cz + radius * sin(phi1) * sin(theta2));
-                QVector3D v3(cx + radius * sin(phi2) * cos(theta1),
-                            cy + radius * cos(phi2),
-                            cz + radius * sin(phi2) * sin(theta1));
-                QVector3D v4(cx + radius * sin(phi2) * cos(theta2),
-                            cy + radius * cos(phi2),
-                            cz + radius * sin(phi2) * sin(theta2));
-                
-                // Two triangles per quad
-                widget_vertices_.insert(widget_vertices_.end(), {
-                    v1.x(), v1.y(), v1.z(), color[0], color[1], color[2], alpha,
-                    v3.x(), v3.y(), v3.z(), color[0], color[1], color[2], alpha,
-                    v2.x(), v2.y(), v2.z(), color[0], color[1], color[2], alpha,
-                    
-                    v2.x(), v2.y(), v2.z(), color[0], color[1], color[2], alpha,
-                    v3.x(), v3.y(), v3.z(), color[0], color[1], color[2], alpha,
-                    v4.x(), v4.y(), v4.z(), color[0], color[1], color[2], alpha
-                });
-            }
-        }
-    }
-    
-    void generate_sphere_outline(float cx, float cy, float cz, float radius,
-                                const float color[3], float alpha, int lat_segments, int lon_segments, float thickness,
-                                const QVector3D& camera_forward = QVector3D(0, 0, -1)) {
-        // Blender's exact approach: single sphere with mixed inner_color and outline_color
-        // They use: interp_v4_v4v4(negative_color, view_color, axis_color[axis], 0.25f)
-        
-        const auto& bg_color = Theme::instance().ui().background;
-        float mixed_color[3] = {
-            bg_color[0] * 0.75f + color[0] * 0.25f,  // 75% background + 25% axis color
-            bg_color[1] * 0.75f + color[1] * 0.25f,
-            bg_color[2] * 0.75f + color[2] * 0.25f
-        };
-        
-        // Create simple outline-only sphere - user requested "just the outline but like a sphere"
-        // Use low-resolution sphere to create clean outline appearance
-        generate_sphere(cx, cy, cz, radius, mixed_color, 0.4f, 8, 6);
-    }
     
     void generate_blender_infinite_grid() {
         grid_vertices_.clear();
@@ -928,6 +238,31 @@ private:
         
         qDebug() << "macOS Natural Scrolling detected:" << (natural_scroll_direction_ ? "ON" : "OFF");
 #endif
+    }
+    
+private slots:
+    void onAxisClicked(int axis, bool positive) {
+        // Handle navigation widget axis clicks
+        float angle_x = 0, angle_y = 0;
+        
+        switch (axis) {
+            case 0: // X axis
+                angle_y = positive ? 90.0f : -90.0f;
+                angle_x = 0.0f;
+                break;
+            case 1: // Y axis
+                angle_x = -90.0f;
+                angle_y = 0.0f;
+                break;
+            case 2: // Z axis
+                angle_x = 0.0f;
+                angle_y = positive ? 0.0f : 180.0f;
+                break;
+        }
+        
+        // Set camera rotation to look at the axis
+        camera_.set_rotation(QQuaternion::fromEulerAngles(angle_x, angle_y, 0.0f));
+        update();
     }
     
     // Smart mouse and trackpad detection (Blender-style)
@@ -1023,8 +358,15 @@ protected:
         // Generate initial grid geometry
         generate_blender_infinite_grid();
         
-        // Generate viewport widget geometry
-        generate_viewport_widget();
+        // Initialize navigation widget
+        if (nav_widget_) {
+            nav_widget_->initialize();
+            nav_widget_->setPosition(QPointF(30.0f, 30.0f)); // Position in bottom-right with margin
+            nav_widget_->setSize(80.0f); // Size in pixels
+            nav_widget_->setAxisClickCallback([this](int axis, bool positive) {
+                onAxisClicked(axis, positive);
+            });
+        }
         
         // Create and compile shaders (OpenGL 3.3 Core) - Blender's exact approach
         const char* vertex_shader = R"(
@@ -1227,80 +569,7 @@ protected:
         vao_.release();
         vertex_buffer_.release();
         
-        // Create widget shaders (simple vertex coloring)
-        const char* widget_vertex_shader = R"(
-            #version 330 core
-            layout (location = 0) in vec3 position;
-            layout (location = 1) in vec4 color;
-            
-            uniform mat4 model;
-            uniform mat4 view;
-            uniform mat4 projection;
-            
-            out vec4 vertex_color;
-            
-            void main() {
-                vertex_color = color;
-                gl_Position = projection * view * model * vec4(position, 1.0);
-            }
-        )";
-        
-        const char* widget_fragment_shader = R"(
-            #version 330 core
-            in vec4 vertex_color;
-            out vec4 frag_color;
-            
-            void main() {
-                frag_color = vertex_color;
-            }
-        )";
-        
-        // Compile widget shaders
-        if (!widget_shader_program_.addShaderFromSourceCode(QOpenGLShader::Vertex, widget_vertex_shader)) {
-            qFatal("Failed to compile widget vertex shader: %s", qPrintable(widget_shader_program_.log()));
-        }
-        
-        if (!widget_shader_program_.addShaderFromSourceCode(QOpenGLShader::Fragment, widget_fragment_shader)) {
-            qFatal("Failed to compile widget fragment shader: %s", qPrintable(widget_shader_program_.log()));
-        }
-        
-        if (!widget_shader_program_.link()) {
-            qFatal("Failed to link widget shader program: %s", qPrintable(widget_shader_program_.log()));
-        }
-        
-        // Set up widget VAO and VBO with error checking
-        if (!widget_vertices_.empty() && widget_vertex_count_ > 0) {
-            widget_vao_.create();
-            widget_vao_.bind();
-            
-            widget_vbo_.create();
-            widget_vbo_.bind();
-            
-            // Allocate buffer with size check
-            int buffer_size = widget_vertices_.size() * sizeof(float);
-            qDebug() << "Allocating widget buffer:" << buffer_size << "bytes for" << widget_vertex_count_ << "vertices";
-            widget_vbo_.allocate(widget_vertices_.data(), buffer_size);
-            
-            // Set up widget vertex attributes (position + color)
-            glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 7 * sizeof(float), (void*)0);
-            glEnableVertexAttribArray(0);
-            
-            glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, 7 * sizeof(float), (void*)(3 * sizeof(float)));
-            glEnableVertexAttribArray(1);
-            
-            widget_vao_.release();
-            widget_vbo_.release();
-            
-            // Check for OpenGL errors after widget setup
-            GLenum err = glGetError();
-            if (err != GL_NO_ERROR) {
-                qDebug() << "OpenGL Error after widget setup:" << err;
-            }
-        } else {
-            qDebug() << "Warning: Empty widget vertices, skipping widget VAO setup";
-        }
-        
-        qDebug() << "OpenGL viewport initialized with" << vertex_count_ << "vertices and" << widget_vertex_count_ << "widget vertices";
+        qDebug() << "OpenGL viewport initialized with" << vertex_count_ << "vertices";
     }
     
     void paintGL() override {
@@ -1354,8 +623,10 @@ protected:
         
         shader_program_.release();
         
-        // Render navigation widget with proper 3D spheres
-        render_viewport_widget();
+        // Render navigation widget
+        if (nav_widget_ && nav_widget_->isVisible()) {
+            nav_widget_->render(view, projection);
+        }
         
         // Check for OpenGL errors
         GLenum err = glGetError();
@@ -1370,17 +641,35 @@ protected:
     
     // Blender-style navigation controls
     void mousePressEvent(QMouseEvent *event) override {
+        // Try navigation widget first
+        if (nav_widget_ && nav_widget_->handleMousePress(event, camera_.get_view_matrix(), camera_.get_projection_matrix(float(width()) / height()))) {
+            update();
+            return;
+        }
+        
         mouse_pressed_ = true;
         pressed_button_ = event->button();
         last_mouse_pos_ = event->pos();
     }
     
     void mouseReleaseEvent(QMouseEvent *event) override {
+        // Try navigation widget first
+        if (nav_widget_ && nav_widget_->handleMouseRelease(event, camera_.get_view_matrix(), camera_.get_projection_matrix(float(width()) / height()))) {
+            update();
+            return;
+        }
+        
         mouse_pressed_ = false;
         pressed_button_ = 0;
     }
     
     void mouseMoveEvent(QMouseEvent *event) override {
+        // Try navigation widget first (for hover effects)
+        if (nav_widget_ && nav_widget_->handleMouseMove(event, camera_.get_view_matrix(), camera_.get_projection_matrix(float(width()) / height()))) {
+            update();
+            if (!mouse_pressed_) return;
+        }
+        
         if (mouse_pressed_) {
             QPoint delta = event->pos() - last_mouse_pos_;
             

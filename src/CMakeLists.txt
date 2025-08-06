@@ -8,7 +8,12 @@ if(Qt6_FOUND AND OPENGL_FOUND)
     # Enable Qt MOC
     set(CMAKE_AUTOMOC ON)
     
-    add_executable(voxelux voxelux_opengl.cpp theme.cpp)
+    add_executable(voxelux 
+        voxelux_opengl.cpp 
+        theme.cpp
+        viewport_widget.cpp
+        viewport_nav_widget.cpp
+    )
     
     target_link_libraries(voxelux 
         Qt6::Core
