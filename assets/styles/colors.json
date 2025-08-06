@@ -1,0 +1,84 @@
+{
+  "theme": "voxelux_professional",
+  "version": "1.0",
+  "description": "Professional voxel editor color palette with Blender-inspired navigation",
+  
+  "colors": {
+    "axes": {
+      "x_axis": {
+        "hex": "#F54250",
+        "rgb": [0.96, 0.26, 0.31],
+        "description": "X-axis red - warm, distinguishable red"
+      },
+      "y_axis": {
+        "hex": "#69C206", 
+        "rgb": [0.41, 0.76, 0.02],
+        "description": "Y-axis green - vibrant, natural green"
+      },
+      "z_axis": {
+        "hex": "#3987DB",
+        "rgb": [0.22, 0.53, 0.86], 
+        "description": "Z-axis blue - professional, trustworthy blue"
+      }
+    },
+    
+    "grid": {
+      "major_lines": {
+        "hex": "#4D4D4D",
+        "rgb": [0.3, 0.3, 0.3],
+        "description": "Major grid lines - subtle but visible"
+      },
+      "minor_lines": {
+        "hex": "#333333", 
+        "rgb": [0.2, 0.2, 0.2],
+        "description": "Minor grid lines - very subtle"
+      },
+      "origin": {
+        "hex": "#FFFFFF",
+        "rgb": [1.0, 1.0, 1.0],
+        "description": "Origin highlight - pure white"
+      }
+    },
+    
+    "ui": {
+      "background": {
+        "hex": "#2B2B2B",
+        "rgb": [0.168, 0.168, 0.168],
+        "description": "Main background - Blender-inspired dark"
+      },
+      "panel": {
+        "hex": "#323232",
+        "rgb": [0.196, 0.196, 0.196], 
+        "description": "Panel background - slightly lighter"
+      },
+      "text": {
+        "hex": "#CCCCCC",
+        "rgb": [0.8, 0.8, 0.8],
+        "description": "Primary text - high contrast"
+      },
+      "text_secondary": {
+        "hex": "#999999",
+        "rgb": [0.6, 0.6, 0.6],
+        "description": "Secondary text - lower contrast"
+      },
+      "selection": {
+        "hex": "#5680C2",
+        "rgb": [0.337, 0.502, 0.761],
+        "description": "Selection highlight - professional blue"
+      },
+      "hover": {
+        "hex": "#FFFFFF",
+        "rgb": [1.0, 1.0, 1.0],
+        "description": "Hover background - pure white"
+      }
+    },
+    
+    "widget": {
+      "positive_sphere_alpha": 1.0,
+      "negative_sphere_fill_alpha": 0.1,
+      "negative_sphere_ring_alpha": 0.8,
+      "line_alpha": 0.8,
+      "hover_background_alpha": 0.3
+    }
+  }
+}
