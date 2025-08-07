@@ -180,13 +180,6 @@ private:
     // Scroll direction handling
     bool natural_scroll_direction_ = false;
     
-
-
-    
-    
-
-    
-    
     void generate_blender_infinite_grid() {
         grid_vertices_.clear();
         
@@ -366,6 +359,15 @@ protected:
             nav_widget_->setAxisClickCallback([this](int axis, bool positive) {
                 onAxisClicked(axis, positive);
             });
+            
+            // Configure text offsets for fine-tuning label positions
+            // Positive values move right/down, negative values move left/up
+            // nav_widget_->setTextOffsetY(0.0f, -1.0f);      // Move Y label up 1 pixel
+            // nav_widget_->setTextOffsetZ(0.0f, 1.0f);       // Move Z label down 1 pixel
+            // nav_widget_->setTextOffsetNegX(0.5f, 0.0f);    // Move -X label right 0.5 pixels
+            nav_widget_->setTextOffsetY(0.0f, 1.0f);
+            nav_widget_->setTextOffsetX(0.0f, 1.0f);
+            nav_widget_->setTextOffsetZ(0.0f, 1.0f);
         }
         
         // Create and compile shaders (OpenGL 3.3 Core) - Blender's exact approach

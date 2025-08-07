@@ -295,9 +295,9 @@ int ViewportNavWidget::hitTest(const QPoint& pos, const QMatrix4x4& view, const 
     widget_ortho.ortho(-1.0f, 1.0f, -1.0f, 1.0f, -10.0f, 10.0f);
     QMatrix4x4 mvp = widget_ortho * rotation_only_view;
     
-    // Check sphere hits - match the rendering parameters
+    // Check sphere hits - match the rendering parameters exactly
     const float axis_distance = 0.85f; // Match regenerateSortedWidget value
-    const float widget_radius = 45.0f * 0.45f; // widget_size/2 * 0.45 = 45 * 0.45 = 20.25
+    const float widget_radius = widget_size * 0.45f; // Match renderScreenSpaceElements = 40.5 (was 20.25!)
     const float sphere_base_radius = 0.73f; // Match regenerateSortedWidget sphere_radius
     
     // Sphere positions in 3D
@@ -327,7 +327,7 @@ int ViewportNavWidget::hitTest(const QPoint& pos, const QMatrix4x4& view, const 
         
         // Calculate hit radius - larger than visual radius so you can hover anywhere on the circle
         // Make hit radius about 2.0x larger than the visual radius
-        float sphere_screen_radius = sphere_base_radius * widget_radius * 0.32f * 2.0f; // 2.0x bigger for easier hovering
+        float sphere_screen_radius = sphere_base_radius * widget_radius * 0.32f * 1.2f; // float x bigger for easier hovering
         // Convert to normalized space (widget is 90px, so normalized radius = screen_radius / 45)
         float sphere_radius_normalized = sphere_screen_radius / 45.0f;
         
@@ -774,8 +774,18 @@ void ViewportNavWidget::renderTextForSphere(int billboard_index, int sphere_inde
         
         // Use smaller scale for negative axes to fit better in the sphere
         float text_scale = spheres[label_index].positive ? 1.0f : 0.8f;
+        
+        // Get custom text offsets for this specific label (if any)
+        QString labelText = spheres[label_index].label;
+        float offsetX = 0.0f, offsetY = 0.0f;
+        auto offsetIt = text_offsets_.find(labelText);
+        if (offsetIt != text_offsets_.end()) {
+            offsetX = offsetIt->second.first;
+            offsetY = offsetIt->second.second;
+        }
+        
         text_renderer_.renderTextCentered(spheres[label_index].label, screen_x, screen_y, text_scale, 
-                                        text_color, screen_projection);
+                                        text_color, screen_projection, offsetX, offsetY);
         
         // Re-bind widget shader context
         widget_shader_program_.bind();

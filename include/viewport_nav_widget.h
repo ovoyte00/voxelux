@@ -4,6 +4,7 @@
 #include "text_renderer.h"
 #include <array>
 #include <vector>
+#include <map>
 
 /**
  * Navigation widget for 3D viewport - professional axis orientation control.
@@ -28,6 +29,15 @@ public:
     void setAxisColors(const QVector3D& xColor, const QVector3D& yColor, const QVector3D& zColor);
     void setBackgroundAlpha(float alpha) { background_alpha_ = alpha; }
     void setShowAxisLabels(bool show) { show_labels_ = show; }
+    
+    // Text offset settings - individual control for each axis label
+    void setTextOffsetX(float offsetX, float offsetY) { text_offsets_["X"] = {offsetX, offsetY}; }
+    void setTextOffsetY(float offsetX, float offsetY) { text_offsets_["Y"] = {offsetX, offsetY}; }
+    void setTextOffsetZ(float offsetX, float offsetY) { text_offsets_["Z"] = {offsetX, offsetY}; }
+    void setTextOffsetNegX(float offsetX, float offsetY) { text_offsets_["-X"] = {offsetX, offsetY}; }
+    void setTextOffsetNegY(float offsetX, float offsetY) { text_offsets_["-Y"] = {offsetX, offsetY}; }
+    void setTextOffsetNegZ(float offsetX, float offsetY) { text_offsets_["-Z"] = {offsetX, offsetY}; }
+    void clearTextOffsets() { text_offsets_.clear(); }
 
     // Callback function type for axis clicks
     typedef std::function<void(int axis, bool positive)> AxisClickCallback;
@@ -134,4 +144,7 @@ private:
     
     // Text rendering system
     TextRenderer text_renderer_;
+    
+    // Text offset storage - maps axis label to {offsetX, offsetY}
+    std::map<QString, std::pair<float, float>> text_offsets_;
 };

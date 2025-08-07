@@ -151,7 +151,8 @@ QFont Typography::getFont(const std::string& style_name) const {
     const FontDefinition& fontDef = fontIt->second;
     
     // Create QFont with the loaded font family
-    QFont font(fontDef.family_name, style->size);
+    QFont font(fontDef.family_name);
+    font.setPixelSize(style->size); // Use JSON size value as pixel size, not point size
     font.setWeight(static_cast<QFont::Weight>(style->weight));
     
     return font;

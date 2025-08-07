@@ -28,13 +28,16 @@ public:
     
     // Text rendering
     void renderText(const QString& text, float x, float y, float scale, 
-                   const QVector3D& color, const QMatrix4x4& projection);
+                   const QVector3D& color, const QMatrix4x4& projection,
+                   float offsetX = 0.0f, float offsetY = 0.0f);
     void renderTextCentered(const QString& text, float x, float y, float scale,
-                           const QVector3D& color, const QMatrix4x4& projection);
+                           const QVector3D& color, const QMatrix4x4& projection,
+                           float offsetX = 0.0f, float offsetY = 0.0f);
     
     // Text rendering with depth
     void renderTextCentered(const QString& text, float x, float y, float z, float scale,
-                           const QVector3D& color, const QMatrix4x4& projection);
+                           const QVector3D& color, const QMatrix4x4& projection,
+                           float offsetX = 0.0f, float offsetY = 0.0f);
     
     // Font management
     void setFont(const QFont& font);
@@ -63,15 +66,17 @@ private:
     // Glyph management
     void generateCharacterTextures();
     Character loadCharacter(QChar c);
-    Character loadStringTexture(const QString& text);
+    Character loadStringTexture(const QString& text, float offsetX = 0.0f, float offsetY = 0.0f);
     void createTextureAtlas();
     
     // Rendering internals
     void setupShaders();
     void renderTextInternal(const QString& text, float x, float y, float scale, 
-                           const QVector3D& color, bool centered, float z = 0.0f);
-    void renderMultiCharacterString(const QString& text, float x, float y, float scale, 
-                                   const QVector3D& color, bool centered, float z = 0.0f);
+                           const QVector3D& color, bool centered, float z = 0.0f,
+                           float offsetX = 0.0f, float offsetY = 0.0f);
+    void renderStringAsTexture(const QString& text, float x, float y, float scale, 
+                              const QVector3D& color, bool centered, float z = 0.0f,
+                              float offsetX = 0.0f, float offsetY = 0.0f);
     
     // OpenGL resources
     QOpenGLShaderProgram text_shader_;
