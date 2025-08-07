@@ -163,6 +163,8 @@ private:
     // GPU Resources (Blender-style resource management)
     QOpenGLVertexArrayObject vao_;
     QOpenGLBuffer vertex_buffer_;
+    QOpenGLVertexArrayObject vertical_vao_;
+    QOpenGLBuffer vertical_vertex_buffer_;
     QOpenGLShaderProgram shader_program_;
     
     // Camera system
@@ -173,9 +175,16 @@ private:
     int pressed_button_ = 0;
     QPoint last_mouse_pos_;
     
+    // Orthographic view state
+    bool is_ortho_side_view_ = false;
+    int current_ortho_axis_ = -1; // -1 = none, 0 = X, 1 = Y, 2 = Z
+    bool ortho_positive_ = true;
+    
     // Grid geometry
     std::vector<float> grid_vertices_;
+    std::vector<float> vertical_grid_vertices_;
     int vertex_count_ = 0;
+    int vertical_vertex_count_ = 0;
     
     // Viewport widgets
     std::unique_ptr<ViewportNavWidget> nav_widget_;
@@ -190,6 +199,32 @@ private:
     // Scroll direction handling
     bool natural_scroll_direction_ = false;
     
+    bool is_side_view() {
+        // Only return true if we're in a locked orthographic side view from navigation widget
+        return is_ortho_side_view_;
+    }
+    
+    void generate_vertical_grid() {
+        vertical_grid_vertices_.clear();
+        
+        // Generate a simple full-screen quad for the vertical background grid
+        // Using normalized coordinates that will fill the viewport
+        vertical_grid_vertices_ = {
+            // Two triangles forming a full-screen quad
+            // First triangle
+            -1.0f, -1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f,  // Bottom-left
+             1.0f, -1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f,  // Bottom-right
+            -1.0f,  1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f,  // Top-left
+            
+            // Second triangle
+            -1.0f,  1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f,  // Top-left
+             1.0f, -1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f,  // Bottom-right
+             1.0f,  1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f   // Top-right
+        };
+        
+        vertical_vertex_count_ = 6; // Just 6 vertices for 2 triangles
+    }
+
     void generate_blender_infinite_grid() {
         grid_vertices_.clear();
         
@@ -248,12 +283,19 @@ private slots:
         // Handle navigation widget axis clicks
         float angle_x = 0, angle_y = 0;
         
+        // Update orthographic view state
+        current_ortho_axis_ = axis;
+        ortho_positive_ = positive;
+        
+        // Only show vertical grid for X and Z axis views (side views)
+        is_ortho_side_view_ = (axis == 0 || axis == 2);
+        
         switch (axis) {
             case 0: // X axis
                 angle_y = positive ? 90.0f : -90.0f;
                 angle_x = 0.0f;
                 break;
-            case 1: // Y axis
+            case 1: // Y axis (top/bottom view - no vertical grid)
                 angle_x = positive ? -90.0f : 90.0f;  // +Y looks down, -Y looks up
                 angle_y = 0.0f;
                 break;
@@ -311,7 +353,15 @@ private slots:
         } else {
             // Default scroll = Rotate (like Blender trackpad rotation)
             // Use the same Blender sensitivity as rotate()
+            qDebug() << "Trackpad wheel rotation - delta:" << adjustedDelta.x() << adjustedDelta.y();
             camera_.rotate(-adjustedDelta.x(), -adjustedDelta.y());
+            
+            // Clear orthographic view state when rotating via trackpad
+            if (adjustedDelta.x() != 0 || adjustedDelta.y() != 0) {
+                qDebug() << "Cleared ortho view due to trackpad wheel rotation - was ortho:" << is_ortho_side_view_;
+                is_ortho_side_view_ = false;
+                current_ortho_axis_ = -1;
+            }
         }
         update();
     }
@@ -404,13 +454,27 @@ protected:
             out vec3 world_pos;
             
             void main() {
-                // Blender's exact vertex shader logic
-                local_pos = position;
+                // Grid vertices come in as XZ plane (x, 0, z), transform based on plane_axes
+                vec3 vert_pos;
+                if (plane_axes.x > 0.5 && plane_axes.y > 0.5) {
+                    // XY plane (front/back view) - map XZ to XY
+                    vert_pos = vec3(position.x, position.z, 0.0);
+                } else if (plane_axes.x > 0.5 && plane_axes.z > 0.5) {
+                    // XZ plane (top/bottom view - horizontal grid) - use as-is
+                    vert_pos = position;
+                } else if (plane_axes.y > 0.5 && plane_axes.z > 0.5) {
+                    // YZ plane (left/right view) - map XZ to YZ
+                    vert_pos = vec3(0.0, position.x, position.z);
+                } else {
+                    // Default XZ plane
+                    vert_pos = position;
+                }
                 
-                // Simplified approach - position grid around origin
-                vec3 real_pos = position * grid_size;
-                real_pos.y = 0.0; // Grid on XZ plane
+                // Scale grid to world size
+                vec3 real_pos = vert_pos * grid_size;
+                
                 world_pos = real_pos;
+                local_pos = position;
                 
                 gl_Position = projection * view * vec4(real_pos, 1.0);
             }
@@ -426,6 +490,7 @@ protected:
             uniform float line_size;
             uniform vec3 plane_axes;
             uniform mat4 view;
+            uniform mat4 projection;
             
             // Grid colors (Blender-style)
             uniform vec3 grid_color;
@@ -462,9 +527,25 @@ protected:
                 vec3 dFdyPos = dFdy(P);
                 vec3 fwidthPos = abs(dFdxPos) + abs(dFdyPos);
                 
-                // Grid calculations on XZ plane
-                vec2 grid_pos = P.xz;
-                vec2 grid_fwidth = fwidthPos.xz;
+                // Grid calculations on active plane based on plane_axes uniform (like Blender)
+                vec2 grid_pos, grid_fwidth;
+                if (plane_axes.x > 0.5 && plane_axes.y > 0.5) {
+                    // XY plane (front/back view)
+                    grid_pos = P.xy;
+                    grid_fwidth = fwidthPos.xy;
+                } else if (plane_axes.x > 0.5 && plane_axes.z > 0.5) {
+                    // XZ plane (top/bottom view - horizontal grid)
+                    grid_pos = P.xz;
+                    grid_fwidth = fwidthPos.xz;
+                } else if (plane_axes.y > 0.5 && plane_axes.z > 0.5) {
+                    // YZ plane (left/right view)
+                    grid_pos = P.yz;
+                    grid_fwidth = fwidthPos.yz;
+                } else {
+                    // Default XZ plane
+                    grid_pos = P.xz;
+                    grid_fwidth = fwidthPos.xz;
+                }
                 
                 // Grid resolution calculation - Blender's approach
                 float grid_res = max(length(dFdxPos), length(dFdyPos));
@@ -513,17 +594,44 @@ protected:
                 // Combine alphas - higher level grids take precedence when visible
                 alpha = max(alpha1, max(alpha10, alpha100));
                 
-                // Calculate axis lines with proper derivatives to keep them thin
+                // Calculate axis lines based on active plane
                 vec3 axes_dist = vec3(0.0);
                 vec3 axes_fwidth = vec3(0.0);
                 
-                // X-axis (red line along Z direction)
-                axes_dist.x = P.z;
-                axes_fwidth.x = fwidthPos.z;
-                
-                // Z-axis (blue line along X direction)  
-                axes_dist.z = P.x;
-                axes_fwidth.z = fwidthPos.x;
+                if (plane_axes.x > 0.5 && plane_axes.y > 0.5) {
+                    // XY plane (front/back view)
+                    // X-axis (red) at Y=0
+                    axes_dist.x = P.y;
+                    axes_fwidth.x = fwidthPos.y;
+                    
+                    // Y-axis (green, using Z uniform) at X=0
+                    axes_dist.z = P.x;
+                    axes_fwidth.z = fwidthPos.x;
+                } else if (plane_axes.x > 0.5 && plane_axes.z > 0.5) {
+                    // XZ plane (top/bottom view - horizontal grid)
+                    // X-axis (red) at Z=0
+                    axes_dist.x = P.z;
+                    axes_fwidth.x = fwidthPos.z;
+                    
+                    // Z-axis (blue) at X=0
+                    axes_dist.z = P.x;
+                    axes_fwidth.z = fwidthPos.x;
+                } else if (plane_axes.y > 0.5 && plane_axes.z > 0.5) {
+                    // YZ plane (left/right view)
+                    // Y-axis (green, using X uniform) at Z=0
+                    axes_dist.x = P.z;
+                    axes_fwidth.x = fwidthPos.z;
+                    
+                    // Z-axis (blue) at Y=0
+                    axes_dist.z = P.y;
+                    axes_fwidth.z = fwidthPos.y;
+                } else {
+                    // Default XZ plane
+                    axes_dist.x = P.z;
+                    axes_fwidth.x = fwidthPos.z;
+                    axes_dist.z = P.x;
+                    axes_fwidth.z = fwidthPos.x;
+                }
                 
                 // Use thinner axis size to prevent thick lines up close
                 vec3 axes = get_axes(axes_dist, axes_fwidth, 0.05); // Thinner axes
@@ -588,7 +696,27 @@ protected:
         vao_.release();
         vertex_buffer_.release();
         
-        qDebug() << "OpenGL viewport initialized with" << vertex_count_ << "vertices";
+        // Set up vertical grid VAO and VBO
+        generate_vertical_grid();
+        
+        vertical_vao_.create();
+        vertical_vao_.bind();
+        
+        vertical_vertex_buffer_.create();
+        vertical_vertex_buffer_.bind();
+        vertical_vertex_buffer_.allocate(vertical_grid_vertices_.data(), vertical_grid_vertices_.size() * sizeof(float));
+        
+        // Set up vertical grid vertex attributes (same layout as horizontal grid)
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 7 * sizeof(float), (void*)0);
+        glEnableVertexAttribArray(0);
+        
+        glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, 7 * sizeof(float), (void*)(3 * sizeof(float)));
+        glEnableVertexAttribArray(1);
+        
+        vertical_vao_.release();
+        vertical_vertex_buffer_.release();
+        
+        qDebug() << "OpenGL viewport initialized with" << vertex_count_ << "horizontal and" << vertical_vertex_count_ << "vertical vertices";
     }
     
     void paintGL() override {
@@ -597,10 +725,17 @@ protected:
             float grid_size = qMax(2000.0f, camera_.get_distance() * 6.0f);
             QMatrix4x4 view = camera_.get_view_matrix();
             QVector3D view_pos = view.inverted().column(3).toVector3D();
+            
+            // Debug side view detection
+            QQuaternion rotation = camera_.get_rotation();
+            QVector3D forward = rotation.rotatedVector(QVector3D(0, 0, -1));
+            bool side_view = is_side_view();
+            
             qDebug() << "Frame" << frame_count 
                      << "Camera distance:" << camera_.get_distance()
                      << "Grid size:" << grid_size
-                     << "View pos:" << view_pos.x() << view_pos.y() << view_pos.z();
+                     << "Forward:" << forward.x() << forward.y() << forward.z()
+                     << "Side view:" << side_view;
         }
         
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -635,7 +770,36 @@ protected:
         shader_program_.setUniformValue("grid_axis_x_color", QVector3D(0.96f, 0.26f, 0.31f)); // #F54250 red X-axis
         shader_program_.setUniformValue("grid_axis_z_color", QVector3D(0.22f, 0.53f, 0.86f)); // #3987DB blue Z-axis
         
-        // Draw tessellated triangles with Blender's grid shader
+        // Draw vertical grid in side view (using same geometry as horizontal grid)
+        if (is_side_view()) {
+            static int debug_count = 0;
+            if (debug_count++ % 60 == 0) {
+                qDebug() << "Drawing vertical grid - ortho axis:" << current_ortho_axis_ << "is_ortho:" << is_ortho_side_view_;
+            }
+            // Determine plane based on which navigation sphere was clicked
+            if (current_ortho_axis_ == 0) {
+                // X axis view - YZ plane (left/right view)
+                shader_program_.setUniformValue("plane_axes", QVector3D(0.0f, 1.0f, 1.0f)); // Y and Z active
+                shader_program_.setUniformValue("grid_axis_x_color", QVector3D(0.39f, 0.78f, 0.39f)); // Green Y-axis (using X uniform)
+                shader_program_.setUniformValue("grid_axis_z_color", QVector3D(0.22f, 0.53f, 0.86f)); // Blue Z-axis
+            } else if (current_ortho_axis_ == 2) {
+                // Z axis view - XY plane (front/back view)
+                shader_program_.setUniformValue("plane_axes", QVector3D(1.0f, 1.0f, 0.0f)); // X and Y active
+                shader_program_.setUniformValue("grid_axis_x_color", QVector3D(0.96f, 0.26f, 0.31f)); // Red X-axis
+                shader_program_.setUniformValue("grid_axis_z_color", QVector3D(0.39f, 0.78f, 0.39f)); // Green Y-axis (using Z uniform)
+            }
+            
+            // Draw vertical grid using the same grid geometry
+            vao_.bind();
+            glDrawArrays(GL_TRIANGLES, 0, vertex_count_);
+            vao_.release();
+        }
+        
+        // Always draw horizontal grid (XZ plane)
+        shader_program_.setUniformValue("plane_axes", QVector3D(1.0f, 0.0f, 1.0f)); // X and Z active (XZ plane)
+        shader_program_.setUniformValue("grid_axis_x_color", QVector3D(0.96f, 0.26f, 0.31f)); // Red X-axis
+        shader_program_.setUniformValue("grid_axis_z_color", QVector3D(0.22f, 0.53f, 0.86f)); // Blue Z-axis
+        
         vao_.bind();
         glDrawArrays(GL_TRIANGLES, 0, vertex_count_);
         vao_.release();
@@ -705,15 +869,25 @@ protected:
                     if (has_shift && has_ctrl) {
                         // Shift+Ctrl+MMB = Dolly zoom
                         camera_.zoom(delta.y() * 0.1f);
+                        // Zooming is OK - keep ortho view
                     } else if (has_ctrl) {
                         // Ctrl+MMB = Zoom
                         camera_.zoom(delta.y() * 0.1f);
+                        // Zooming is OK - keep ortho view
                     } else if (has_shift) {
                         // Shift+MMB = Pan
                         camera_.pan(-delta.x(), delta.y());
+                        // Panning is OK - keep ortho view
                     } else {
-                        // MMB = Orbit (default)
+                        // MMB = Orbit (default) - ANY rotation clears ortho view
+                        qDebug() << "Rotating camera - delta:" << delta.x() << delta.y();
                         camera_.rotate(-delta.x(), -delta.y());
+                        // Clear orthographic view state when rotating in any direction
+                        if (delta.x() != 0 || delta.y() != 0) {
+                            qDebug() << "Cleared ortho view due to rotation - was ortho:" << is_ortho_side_view_;
+                            is_ortho_side_view_ = false;
+                            current_ortho_axis_ = -1;
+                        }
                     }
                     update(); // Trigger repaint
                 }
@@ -795,7 +969,16 @@ protected:
             case Qt::GestureUpdated: {
                 // Two-finger trackpad rotation (like Blender)
                 // Use direct delta values - Qt gestures already provide appropriate scaling
+                qDebug() << "Trackpad rotation - delta:" << delta.x() << delta.y();
                 camera_.rotate(-delta.x(), -delta.y());
+                
+                // Clear orthographic view state when rotating via trackpad
+                if (delta.x() != 0 || delta.y() != 0) {
+                    qDebug() << "Cleared ortho view due to trackpad rotation - was ortho:" << is_ortho_side_view_;
+                    is_ortho_side_view_ = false;
+                    current_ortho_axis_ = -1;
+                }
+                
                 update();
                 break;
             }
