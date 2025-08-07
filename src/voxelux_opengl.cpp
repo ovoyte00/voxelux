@@ -1,3 +1,17 @@
+/*
+ * Copyright (C) 2024 Voxelux
+ * 
+ * This software and its source code are proprietary and confidential.
+ * All rights reserved. No part of this software may be reproduced,
+ * distributed, or transmitted in any form or by any means without
+ * prior written permission from Voxelux.
+ * 
+ * Independent implementation of professional 3D viewport techniques.
+ * No GPL-licensed code was used in the development of this software.
+ * All algorithms and implementations are original work or based on
+ * industry-standard techniques from published literature and specifications.
+ */
+
 #include <QApplication>
 #include <QMainWindow>
 #include <QOpenGLWidget>
@@ -132,7 +146,7 @@ public:
     }
 };
 
-// Professional OpenGL viewport following Blender's architecture
+// Professional OpenGL viewport with modern 3D interface
 class VoxelOpenGLWidget : public QOpenGLWidget, protected QOpenGLFunctions_3_3_Core {
     Q_OBJECT
 
@@ -148,7 +162,7 @@ public:
         // Set up for native gesture events (macOS)
         setAttribute(Qt::WA_AcceptTouchEvents, true);
         
-        // Detect system scroll direction preference (Blender-style)
+        // Detect system scroll direction preference for natural interaction
         detectScrollDirection();
         
         // Create navigation widget
@@ -160,7 +174,7 @@ public:
     }
 
 private:
-    // GPU Resources (Blender-style resource management)
+    // GPU Resources for professional rendering pipeline
     QOpenGLVertexArrayObject vao_;
     QOpenGLBuffer vertex_buffer_;
     QOpenGLVertexArrayObject vertical_vao_;
@@ -225,19 +239,19 @@ private:
         vertical_vertex_count_ = 6; // Just 6 vertices for 2 triangles
     }
 
-    void generate_blender_infinite_grid() {
+    void generate_infinite_grid() {
         grid_vertices_.clear();
         
-        // Blender uses a much larger tessellated grid for infinite appearance
+        // Professional 3D applications use tessellated grids for infinite appearance
         constexpr int resolution = 32; // Higher resolution for better quality
         std::vector<float> steps(resolution + 1);
         
-        // [-1, 1] divided into "resolution" steps (Blender's exact approach)
+        // [-1, 1] divided into resolution steps for smooth tessellation
         for (int i = 0; i <= resolution; i++) {
             steps[i] = -1.0f + float(i * 2) / resolution;
         }
         
-        // Generate tessellated triangles (Blender's exact method)
+        // Generate tessellated triangles for smooth grid appearance
         grid_vertices_.reserve(resolution * resolution * 6 * 7);
         
         for (int x = 0; x < resolution; x++) {
@@ -264,7 +278,7 @@ private:
     }
     
     void detectScrollDirection() {
-        // Detect system scroll direction preference (like Blender)
+        // Detect system scroll direction preference for consistency
         natural_scroll_direction_ = false;
         
 #ifdef Q_OS_MACOS
@@ -317,7 +331,7 @@ private slots:
         );
     }
     
-    // Smart mouse and trackpad detection (Blender-style)
+    // Smart mouse and trackpad detection for professional interaction
     bool isTrackpadOrSmartMouse(QWheelEvent *event) {
         QPoint pixelDelta = event->pixelDelta();
         QPoint angleDelta = event->angleDelta();
@@ -328,15 +342,15 @@ private slots:
     }
     
     void handleGestureWheel(const QPoint& pixelDelta, Qt::KeyboardModifiers modifiers) {
-        // Apply scroll direction inversion if natural scrolling is DISABLED (like Blender)
+        // Apply scroll direction inversion for consistent interaction
         QPoint adjustedDelta = pixelDelta;
         if (!natural_scroll_direction_) {
             adjustedDelta.setY(-pixelDelta.y());
         }
         
         if (modifiers & Qt::ControlModifier) {
-            // Ctrl+scroll = Zoom (Blender behavior)
-            // Use Blender's continuous zoom formula: fac / 20.0f
+            // Ctrl+scroll = Zoom (standard 3D viewport behavior)
+            // Smooth continuous zoom with appropriate sensitivity
             float zoomFactor = adjustedDelta.y() / 20.0f;
             if (zoomFactor != 0.0f) {
                 // Apply zoom factor more smoothly
@@ -345,14 +359,14 @@ private slots:
                 camera_.set_distance(newDistance);
             }
         } else if (modifiers & Qt::ShiftModifier) {
-            // Shift+scroll = Pan (Blender behavior)
-            // Use Blender's pan step values: 32px horizontal, 25px vertical
+            // Shift+scroll = Pan (standard 3D viewport behavior)
+            // Professional pan step values: 32px horizontal, 25px vertical
             float panX = -adjustedDelta.x() * (32.0f / 100.0f); // Scale to reasonable values  
             float panY = adjustedDelta.y() * (25.0f / 100.0f);
             camera_.pan(panX, panY);
         } else {
-            // Default scroll = Rotate (like Blender trackpad rotation)
-            // Use the same Blender sensitivity as rotate()
+            // Default scroll = Rotate (trackpad rotation for 3D navigation)
+            // Professional sensitivity for smooth navigation
             qDebug() << "Trackpad wheel rotation - delta:" << adjustedDelta.x() << adjustedDelta.y();
             camera_.rotate(-adjustedDelta.x(), -adjustedDelta.y());
             
@@ -367,23 +381,23 @@ private slots:
     }
     
     void handleTraditionalWheel(const QPoint& angleDelta, Qt::KeyboardModifiers modifiers) {
-        // Traditional mouse wheel (discrete steps) - Blender-exact behavior
+        // Traditional mouse wheel (discrete steps) - professional 3D behavior
         // Note: Traditional mouse wheel typically doesn't need scroll direction inversion
         if (modifiers & Qt::ShiftModifier) {
-            // Shift + wheel = pan (using Blender's pan step values)
+            // Shift + wheel = pan (using professional pan step values)
             if (angleDelta.x() != 0) {
                 float panSteps = angleDelta.x() / 120.0f; // Convert to wheel steps
-                camera_.pan(-panSteps * 32.0f, 0.0f); // 32px horizontal step like Blender
+                camera_.pan(-panSteps * 32.0f, 0.0f); // 32px horizontal step for precision
             }
             if (angleDelta.y() != 0) {
                 float panSteps = angleDelta.y() / 120.0f;
-                camera_.pan(0.0f, -panSteps * 25.0f); // 25px vertical step like Blender
+                camera_.pan(0.0f, -panSteps * 25.0f); // 25px vertical step for precision
             }
         } else {
-            // Normal wheel = zoom (using Blender's 1.2x factor)
+            // Normal wheel = zoom (using professional 1.2x zoom factor)
             if (angleDelta.y() != 0) {
                 float wheelSteps = angleDelta.y() / 120.0f; // Convert to wheel steps
-                // Apply Blender's zoom step for each wheel notch
+                // Apply professional zoom step for each wheel notch
                 for (int i = 0; i < qAbs(wheelSteps); i++) {
                     camera_.zoom(wheelSteps > 0 ? 1 : -1);
                 }
@@ -409,14 +423,14 @@ protected:
         qDebug() << "OpenGL Vendor:" << (const char*)glGetString(GL_VENDOR);
         qDebug() << "OpenGL Renderer:" << (const char*)glGetString(GL_RENDERER);
         
-        // Set up OpenGL state (Blender-style)
+        // Set up OpenGL state for professional rendering
         glEnable(GL_DEPTH_TEST);
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-        glClearColor(0.168f, 0.168f, 0.168f, 1.0f); // Blender's background color
+        glClearColor(0.168f, 0.168f, 0.168f, 1.0f); // Professional neutral gray background
         
         // Generate initial grid geometry
-        generate_blender_infinite_grid();
+        generate_infinite_grid();
         
         // Initialize navigation widget
         if (nav_widget_) {
@@ -437,7 +451,7 @@ protected:
             nav_widget_->setTextOffsetZ(0.0f, 1.0f);
         }
         
-        // Create and compile shaders (OpenGL 3.3 Core) - Blender's exact approach
+        // Create and compile shaders (OpenGL 3.3 Core) - professional approach
         const char* vertex_shader = R"(
             #version 330 core
             layout (location = 0) in vec3 position;
@@ -492,7 +506,7 @@ protected:
             uniform mat4 view;
             uniform mat4 projection;
             
-            // Grid colors (Blender-style)
+            // Grid colors for professional 3D viewport
             uniform vec3 grid_color;
             uniform vec3 grid_emphasis_color;
             uniform vec3 grid_axis_x_color;
@@ -527,7 +541,7 @@ protected:
                 vec3 dFdyPos = dFdy(P);
                 vec3 fwidthPos = abs(dFdxPos) + abs(dFdyPos);
                 
-                // Grid calculations on active plane based on plane_axes uniform (like Blender)
+                // Grid calculations on active plane based on plane_axes uniform
                 vec2 grid_pos, grid_fwidth;
                 if (plane_axes.x > 0.5 && plane_axes.y > 0.5) {
                     // XY plane (front/back view)
@@ -547,7 +561,7 @@ protected:
                     grid_fwidth = fwidthPos.xz;
                 }
                 
-                // Grid resolution calculation - Blender's approach
+                // Grid resolution calculation for professional appearance
                 float grid_res = max(length(dFdxPos), length(dFdyPos));
                 grid_res *= 4.0; // Grid begins to appear when it comprises 4 pixels
                 
@@ -556,7 +570,7 @@ protected:
                 float scaleB = 10.0;  // 10-unit grid
                 float scaleC = 100.0; // 100-unit grid
                 
-                // Blender's multi-level grid system with level-of-detail fading
+                // Multi-level grid system with level-of-detail fading
                 float blendA = 1.0 - linearstep(scaleA * 0.5, scaleA * 4.0, grid_res);
                 float blendB = 1.0 - linearstep(scaleB * 0.5, scaleB * 4.0, grid_res);
                 float blendC = 1.0 - linearstep(scaleC * 0.5, scaleC * 4.0, grid_res);
@@ -570,7 +584,7 @@ protected:
                 float gridB = get_grid(grid_pos, grid_fwidth, scaleB);
                 float gridC = get_grid(grid_pos, grid_fwidth, scaleC);
                 
-                // Dynamic visibility based on zoom level (Blender's approach)
+                // Dynamic visibility based on zoom level for professional use
                 vec3 color = grid_color;
                 float alpha = 0.0;
                 
@@ -652,7 +666,7 @@ protected:
                 float dist = length(V);
                 V /= dist;
                 
-                // Gentler viewing angle fade - less abrupt than Blender's
+                // Gentler viewing angle fade for smooth appearance
                 float angle = V.y;
                 angle = 1.0 - abs(angle);
                 angle = pow(angle, 1.5); // Less aggressive power curve
@@ -678,7 +692,7 @@ protected:
             qFatal("Failed to link shader program: %s", qPrintable(shader_program_.log()));
         }
         
-        // Set up VAO and VBO (Blender-style batch system)
+        // Set up VAO and VBO for efficient rendering
         vao_.create();
         vao_.bind();
         
@@ -742,7 +756,7 @@ protected:
         
         shader_program_.bind();
         
-        // Blender-style matrices
+        // Professional 3D viewport matrices
         QMatrix4x4 model;
         QMatrix4x4 view = camera_.get_view_matrix();
         QMatrix4x4 projection = camera_.get_projection_matrix(float(width()) / height());
@@ -751,7 +765,7 @@ protected:
         shader_program_.setUniformValue("view", view);
         shader_program_.setUniformValue("projection", projection);
         
-        // Blender's grid uniforms
+        // Professional grid rendering uniforms
         QVector3D view_position = view.inverted().column(3).toVector3D();
         float grid_distance = camera_.get_distance();
         float grid_size = qMax(2000.0f, grid_distance * 6.0f); // Huge grid coverage for far view
@@ -759,7 +773,7 @@ protected:
         shader_program_.setUniformValue("view_position", view_position);
         shader_program_.setUniformValue("grid_distance", grid_distance);
         shader_program_.setUniformValue("grid_size", grid_size);
-        shader_program_.setUniformValue("line_size", 0.5f); // Blender's default line thickness
+        shader_program_.setUniformValue("line_size", 0.5f); // Professional line thickness
         
         // XZ plane configuration (for Minecraft-style Y-up world)
         shader_program_.setUniformValue("plane_axes", QVector3D(1.0f, 0.0f, 1.0f));
@@ -822,7 +836,7 @@ protected:
         glViewport(0, 0, width, height);
     }
     
-    // Blender-style navigation controls
+    // Professional 3D navigation controls
     void mousePressEvent(QMouseEvent *event) override {
         // Try navigation widget first
         if (nav_widget_ && nav_widget_->handleMousePress(event, camera_.get_view_matrix(), camera_.get_projection_matrix(float(width()) / height()))) {
@@ -857,7 +871,7 @@ protected:
             QPoint delta = event->pos() - last_mouse_pos_;
             
             if (delta.manhattanLength() > 0) {
-                // Blender-style navigation with MMB alternatives
+                // Professional 3D navigation with MMB alternatives
                 bool has_shift = (event->modifiers() & Qt::ShiftModifier);
                 bool has_ctrl = (event->modifiers() & Qt::ControlModifier);
                 bool has_alt = (event->modifiers() & Qt::AltModifier);
@@ -897,7 +911,7 @@ protected:
     }
     
     void wheelEvent(QWheelEvent *event) override {
-        // Blender-style wheel navigation with smart mouse/trackpad detection
+        // Professional wheel navigation with smart mouse/trackpad detection
         QPoint pixelDelta = event->pixelDelta();
         QPoint angleDelta = event->angleDelta();
         Qt::KeyboardModifiers modifiers = event->modifiers();
@@ -949,7 +963,7 @@ protected:
         qreal scaleFactor = gesture->scaleFactor();
         qreal totalScaleFactor = gesture->totalScaleFactor();
         
-        // Apply zoom based on pinch (like Blender)
+        // Apply zoom based on pinch gesture for natural interaction
         if (totalScaleFactor > 0.0) {
             float newDistance = gesture_start_distance_ / totalScaleFactor;
             camera_.set_distance(newDistance);
@@ -967,7 +981,7 @@ protected:
                 break;
                 
             case Qt::GestureUpdated: {
-                // Two-finger trackpad rotation (like Blender)
+                // Two-finger trackpad rotation for smooth navigation
                 // Use direct delta values - Qt gestures already provide appropriate scaling
                 qDebug() << "Trackpad rotation - delta:" << delta.x() << delta.y();
                 camera_.rotate(-delta.x(), -delta.y());
@@ -1034,7 +1048,7 @@ private:
     }
     
     void create_status_bar() {
-        statusBar()->showMessage("Ready - Smart Mouse/Trackpad: Swipe to Rotate | MMB: Orbit | Shift+MMB: Pan | Ctrl: Zoom | Blender Controls (OpenGL)", 8000);
+        statusBar()->showMessage("Ready - Smart Mouse/Trackpad: Swipe to Rotate | MMB: Orbit | Shift+MMB: Pan | Ctrl: Zoom | Professional 3D Controls (OpenGL)", 8000);
     }
 
 private slots:

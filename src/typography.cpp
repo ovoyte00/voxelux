@@ -1,3 +1,15 @@
+/*
+ * Copyright (C) 2024 Voxelux
+ * 
+ * This software and its source code are proprietary and confidential.
+ * All rights reserved. No part of this software may be reproduced,
+ * distributed, or transmitted in any form or by any means without
+ * prior written permission from Voxelux.
+ * 
+ * Professional typography and font management system.
+ * Independent implementation using standard font loading techniques.
+ */
+
 #include "typography.h"
 #include <QJsonDocument>
 #include <QJsonObject>

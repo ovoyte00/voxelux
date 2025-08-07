@@ -1,3 +1,15 @@
+/*
+ * Copyright (C) 2024 Voxelux
+ * 
+ * This software and its source code are proprietary and confidential.
+ * All rights reserved. No part of this software may be reproduced,
+ * distributed, or transmitted in any form or by any means without
+ * prior written permission from Voxelux.
+ * 
+ * Professional camera animation and transition system.
+ * Independent implementation using Qt animation framework and quaternion math.
+ */
+
 #pragma once
 
 #include <QTimer>

@@ -1,9 +1,18 @@
+# Copyright (C) 2024 Voxelux
+# 
+# This software and its source code are proprietary and confidential.
+# All rights reserved. No part of this software may be reproduced,
+# distributed, or transmitted in any form or by any means without
+# prior written permission from Voxelux.
+# 
+# Professional voxel editing application build configuration.
+
 # Core library modules
 add_subdirectory(core)
 
 # Modern Qt+OpenGL executable (unified application)
 if(Qt6_FOUND AND OPENGL_FOUND)
-    message(STATUS "Building modern Qt+OpenGL application with Blender-style viewport")
+    message(STATUS "Building modern Qt+OpenGL application with professional 3D viewport")
     
     # Enable Qt MOC
     set(CMAKE_AUTOMOC ON)

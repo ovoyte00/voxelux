@@ -1,3 +1,12 @@
+# Copyright (C) 2024 Voxelux
+# 
+# This software and its source code are proprietary and confidential.
+# All rights reserved. No part of this software may be reproduced,
+# distributed, or transmitted in any form or by any means without
+# prior written permission from Voxelux.
+# 
+# Professional voxel editing software build configuration.
+
 cmake_minimum_required(VERSION 3.20)
 project(Voxelux VERSION 0.1.0 LANGUAGES C CXX)
 
