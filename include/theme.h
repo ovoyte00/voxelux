@@ -20,9 +20,9 @@ public:
     
     // Axis colors for 3D navigation widget and grid
     struct AxisColors {
-        Color3f x_axis;     // Red #F54250
-        Color3f y_axis;     // Green #69C206  
-        Color3f z_axis;     // Blue #3987DB
+        Color3f x_axis;       // Red #F53E5F
+        Color3f y_axis;       // Green #7ECA3C  
+        Color3f z_axis;       // Blue #4498DB
     };
     
     // Grid colors for infinite grid system
@@ -86,6 +86,8 @@ namespace Colors {
     
     inline const Theme::Color3f& GridMajor() { return Theme::instance().grid().major_lines; }
     inline const Theme::Color3f& GridMinor() { return Theme::instance().grid().minor_lines; }
+    
+    inline const Theme::Color3f& Background() { return Theme::instance().ui().background; }
     
     inline float PositiveSphere() { return Theme::instance().alpha().positive_sphere; }
     inline float NegativeFill() { return Theme::instance().alpha().negative_sphere_fill; }

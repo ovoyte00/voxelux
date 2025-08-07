@@ -1,0 +1,73 @@
+{
+  "typography": "voxelux_professional",
+  "version": "1.0",
+  "description": "Professional typography system with Inter font family",
+  
+  "fonts": {
+    "primary": {
+      "family": "Inter Variable", 
+      "path": "assets/fonts/InterVariable.ttf",
+      "description": "Primary interface font - Inter Variable for modern, clean appearance (supports weights 100-900)"
+    },
+    "primary_italic": {
+      "family": "Inter Variable",
+      "path": "assets/fonts/InterVariable-Italic.ttf", 
+      "description": "Primary italic interface font - Inter Variable Italic"
+    },
+    "regular": {
+      "family": "Inter",
+      "path": "assets/fonts/extras/ttf/Inter-Regular.ttf",
+      "description": "Inter Regular static font"
+    },
+    "light": {
+      "family": "Inter Light",
+      "path": "assets/fonts/extras/ttf/Inter-Light.ttf", 
+      "description": "Inter Light for navigation labels"
+    }
+  },
+  
+  "text_styles": {
+    "navigation_labels": {
+      "font_family": "primary",
+      "size": 12,
+      "weight": "light",
+      "description": "Axis labels in 3D navigation widget using Inter Variable Light weight"
+    },
+    "ui_primary": {
+      "font_family": "primary", 
+      "size": 12,
+      "weight": "normal",
+      "description": "Primary UI text for menus, buttons, labels"
+    },
+    "ui_secondary": {
+      "font_family": "primary",
+      "size": 10, 
+      "weight": "normal",
+      "description": "Secondary UI text for tooltips, captions"
+    },
+    "headings": {
+      "font_family": "primary",
+      "size": 16,
+      "weight": "bold", 
+      "description": "Section headings and titles"
+    },
+    "code": {
+      "font_family": "primary",
+      "size": 11,
+      "weight": "normal",
+      "description": "Code and monospace text"
+    },
+    "test_light": {
+      "font_family": "primary",
+      "size": 14,
+      "weight": "light",
+      "description": "Test Inter Variable with light weight"
+    },
+    "test_bold": {
+      "font_family": "primary", 
+      "size": 14,
+      "weight": "bold",
+      "description": "Test Inter Variable with bold weight"
+    }
+  }
+}

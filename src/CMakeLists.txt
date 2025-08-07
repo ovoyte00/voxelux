@@ -11,8 +11,10 @@ if(Qt6_FOUND AND OPENGL_FOUND)
     add_executable(voxelux 
         voxelux_opengl.cpp 
         theme.cpp
+        typography.cpp
         viewport_widget.cpp
         viewport_nav_widget.cpp
+        text_renderer.cpp
     )
     
     target_link_libraries(voxelux 

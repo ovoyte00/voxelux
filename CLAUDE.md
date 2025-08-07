@@ -71,7 +71,13 @@ The project follows a modular C++ architecture:
 
 ## Blender Reference Implementation
 
-**IMPORTANT**: This project has Blender's complete source code available at `./lib/blender/` for reference. When implementing viewport controls, UI patterns, or 3D navigation features, always reference Blender's implementation first.
+**IMPORTANT**: This project has a reference implementation available at `./lib/blender/` for studying 3D navigation and UI patterns. When implementing viewport controls, UI patterns, or 3D navigation features, reference this implementation for architectural guidance.
+
+**CRITICAL LICENSING REQUIREMENT**: When referencing the source code:
+- NEVER use function names, variable names, or comments from the reference code
+- NEVER mention the reference project name in code comments or identifiers  
+- Study patterns and algorithms, then write completely original implementations
+- All code must be license-violation-proof and completely independent
 
 ### Key Blender Reference Files:
 - **Viewport Navigation**: `/lib/blender/source/blender/editors/space_view3d/view3d_navigate.cc`
