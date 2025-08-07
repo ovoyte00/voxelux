@@ -67,9 +67,9 @@ bool Theme::loadFromFile(const std::string& filepath) {
 
 void Theme::setDefaults() {
     // Fallback colors if JSON loading fails
-    axis_colors_.x_axis = {0.96f, 0.24f, 0.37f}; // #F53E5F
-    axis_colors_.y_axis = {0.49f, 0.79f, 0.24f}; // #7ECA3C
-    axis_colors_.z_axis = {0.27f, 0.60f, 0.86f}; // #4498DB
+    axis_colors_.x_axis = {0.74f, 0.26f, 0.32f}; // #BC4252
+    axis_colors_.y_axis = {0.42f, 0.67f, 0.20f}; // #6CAC34
+    axis_colors_.z_axis = {0.23f, 0.51f, 0.75f}; // #3B83BE
     
     grid_colors_.major_lines = {0.3f, 0.3f, 0.3f};
     grid_colors_.minor_lines = {0.2f, 0.2f, 0.2f};

@@ -63,12 +63,15 @@ private:
     // Glyph management
     void generateCharacterTextures();
     Character loadCharacter(QChar c);
+    Character loadStringTexture(const QString& text);
     void createTextureAtlas();
     
     // Rendering internals
     void setupShaders();
     void renderTextInternal(const QString& text, float x, float y, float scale, 
                            const QVector3D& color, bool centered, float z = 0.0f);
+    void renderMultiCharacterString(const QString& text, float x, float y, float scale, 
+                                   const QVector3D& color, bool centered, float z = 0.0f);
     
     // OpenGL resources
     QOpenGLShaderProgram text_shader_;

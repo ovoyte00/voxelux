@@ -62,7 +62,7 @@ private:
                                          float ring_r, float ring_g, float ring_b, float ring_alpha, 
                                          std::vector<float>& vertices);
     void generateScreenSpaceLine(float x1, float y1, float x2, float y2, float width, float r, float g, float b, float alpha, std::vector<float>& vertices);
-    void renderTextForSphere(int sphere_index, float screen_x, float screen_y, const QMatrix4x4& view, const QMatrix4x4& projection);
+    void renderTextForSphere(int billboard_index, int sphere_index, float screen_x, float screen_y, const QMatrix4x4& view, const QMatrix4x4& projection);
     void renderHoverBackground(float x, float y, const QMatrix4x4& projection);
     
     // Sphere data for axis indicators
@@ -81,6 +81,7 @@ private:
         QVector3D color;    // RGB color
         bool positive;      // true for solid, false for hollow
         float depth;        // Depth for sorting
+        int sphere_index;   // Original sphere index (0-5) for correct text mapping
     };
     
     // Line data for screen-space rendering

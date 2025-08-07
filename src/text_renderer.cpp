@@ -206,6 +206,75 @@ TextRenderer::Character TextRenderer::loadCharacter(QChar c)
     return character;
 }
 
+TextRenderer::Character TextRenderer::loadStringTexture(const QString& text)
+{
+    QFontMetrics metrics(current_font_);
+    QRect boundingRect = metrics.boundingRect(text);
+    
+    // Use higher resolution for sharper text (2x supersample)
+    int supersample = 2;
+    int padding = 4 * supersample;
+    
+    // Create texture sized for the entire string
+    int width = (boundingRect.width() + padding * 2) * supersample;
+    int height = (metrics.ascent() + metrics.descent() + padding * 2) * supersample;
+    
+    QPixmap pixmap(width, height);
+    pixmap.fill(Qt::black); // Black background
+    
+    QPainter painter(&pixmap);
+    painter.setRenderHint(QPainter::Antialiasing);
+    painter.setRenderHint(QPainter::TextAntialiasing);
+    
+    // Use higher quality font rendering
+    QFont renderFont = current_font_;
+    renderFont.setPixelSize(current_font_.pixelSize() * supersample);
+    painter.setFont(renderFont);
+    painter.setPen(Qt::white); // White text
+    
+    // Draw the entire string centered in the texture
+    int x = padding - boundingRect.left() * supersample;
+    int y = padding + metrics.ascent() * supersample;
+    painter.drawText(x, y, text);  // Draw entire string at once
+    painter.end();
+    
+    // Convert to OpenGL texture with alpha channel
+    QImage image = pixmap.toImage();
+    image = image.convertToFormat(QImage::Format_RGBA8888);
+    
+    // Extract alpha from the white text on black background
+    for (int y = 0; y < image.height(); y++) {
+        for (int x = 0; x < image.width(); x++) {
+            QColor pixel = image.pixelColor(x, y);
+            int alpha = qGray(pixel.rgb());
+            image.setPixelColor(x, y, QColor(255, 255, 255, alpha));
+        }
+    }
+    
+    GLuint texture;
+    glGenTextures(1, &texture);
+    glBindTexture(GL_TEXTURE_2D, texture);
+    
+    // Use better filtering for sharper text
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, image.width(), image.height(), 0, 
+                 GL_RGBA, GL_UNSIGNED_BYTE, image.bits());
+    
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    
+    glBindTexture(GL_TEXTURE_2D, 0);
+    
+    Character stringChar;
+    stringChar.textureId = texture;
+    stringChar.size = QSize(width / supersample, height / supersample); // Return logical size
+    stringChar.bearing = QPoint(padding / supersample, (metrics.ascent() + padding) / supersample);
+    stringChar.advance = metrics.horizontalAdvance(text);
+    
+    return stringChar;
+}
+
 void TextRenderer::setFont(const QFont& font)
 {
     if (current_font_ == font) return;
@@ -256,7 +325,13 @@ void TextRenderer::renderTextInternal(const QString& text, float x, float y, flo
 {
     if (!initialized_ || text.isEmpty()) return;
     
-    // Calculate text dimensions for centering
+    // For multi-character strings, use single texture approach for better quality and no overlap
+    if (text.length() > 1) {
+        renderMultiCharacterString(text, x, y, scale, color, centered, z);
+        return;
+    }
+    
+    // Calculate text dimensions for centering (single characters)
     if (centered) {
         QFontMetrics metrics(current_font_);
         float textWidth = metrics.horizontalAdvance(text) * scale;
@@ -288,16 +363,87 @@ void TextRenderer::renderTextInternal(const QString& text, float x, float y, flo
             
             // Solve for y: y = y - bearingY + textureHeight/2
             y = y + bearingY - textureHeight * 0.5f;
+        } else {
+            // For multi-character strings (like "-X", "-Y", "-Z"), we need to account for the actual
+            // rendering space used by individual characters when they're rendered in sequence
+            
+            QFontMetrics metrics(current_font_);
+            
+            // Use horizontalAdvance to get the total width that will actually be rendered
+            float totalAdvanceWidth = metrics.horizontalAdvance(text) * scale;
+            float textHeight = metrics.height() * scale;
+            
+            // Center based on the actual rendered width (advance width) not tight bounding rect
+            x = x - totalAdvanceWidth * 0.5f;
+            y = y - textHeight * 0.5f + metrics.ascent() * scale;
+            
+            // Debug output for negative axis labels
+            if (text.contains("-")) {
+                QRect boundingRect = metrics.boundingRect(text);
+                printf("Multi-char text '%s': boundingRect=[%d,%d,%dx%d], advance=%.1f, height=%.1f\n", 
+                       text.toStdString().c_str(), 
+                       boundingRect.x(), boundingRect.y(), boundingRect.width(), boundingRect.height(),
+                       totalAdvanceWidth, textHeight);
+                printf("  Using advance width %.1f instead of bounding width %d for proper spacing\n", 
+                       totalAdvanceWidth, boundingRect.width());
+            }
         }
         
         // Debug output for single character text (X, Y, Z)
-        if (text.length() == 1) {
-            printf("Text '%s': advance_width=%.1f, actual_width=%.1f, bounding=[%d,%d,%dx%d], x_offset=%.1f, final_x=%.1f, final_y=%.1f\n", 
-                   text.toStdString().c_str(), textWidth, actualWidth,
-                   boundingRect.x(), boundingRect.y(), boundingRect.width(), boundingRect.height(),
-                   actualWidth * 0.5f, x, y);
-        }
+        // if (text.length() == 1) {
+        //     printf("Text '%s': advance_width=%.1f, actual_width=%.1f, bounding=[%d,%d,%dx%d], x_offset=%.1f, final_x=%.1f, final_y=%.1f\n", 
+        //            text.toStdString().c_str(), textWidth, actualWidth,
+        //            boundingRect.x(), boundingRect.y(), boundingRect.width(), boundingRect.height(),
+        //            actualWidth * 0.5f, x, y);
+        // }
     }
+    
+    // DEBUG: Show overall text bounding box for multi-character strings
+    /*
+    if (centered && text.length() > 1 && text.contains("-")) {
+        QFontMetrics metrics(current_font_);
+        float totalAdvanceWidth = metrics.horizontalAdvance(text) * scale;
+        float textHeight = metrics.height() * scale;
+        
+        // This is the overall area the text should occupy
+        float box_x = x;  // x is already adjusted for centering
+        float box_y = y - metrics.ascent() * scale;  // Adjust for baseline
+        float box_w = totalAdvanceWidth;
+        float box_h = textHeight;
+        
+        printf("Overall text box for '%s': pos=(%.1f,%.1f), size=(%.1fx%.1f)\n", 
+               text.toStdString().c_str(), box_x, box_y, box_w, box_h);
+        
+        // Render blue debug box for overall text area
+        std::vector<float> overall_bg_vertices = {
+            // Blue background to show overall text area
+            box_x,         box_y + box_h,  -0.002f,  0.0f, 0.0f,  0.0f, 0.0f, 1.0f,  // Blue color
+            box_x,         box_y,          -0.002f,  0.0f, 1.0f,  0.0f, 0.0f, 1.0f,
+            box_x + box_w, box_y,          -0.002f,  1.0f, 1.0f,  0.0f, 0.0f, 1.0f,
+            
+            box_x,         box_y + box_h,  -0.002f,  0.0f, 0.0f,  0.0f, 0.0f, 1.0f,
+            box_x + box_w, box_y,          -0.002f,  1.0f, 1.0f,  0.0f, 0.0f, 1.0f,
+            box_x + box_w, box_y + box_h,  -0.002f,  1.0f, 0.0f,  0.0f, 0.0f, 1.0f
+        };
+        
+        vao_.bind();
+        vbo_.bind();
+        vbo_.allocate(overall_bg_vertices.data(), overall_bg_vertices.size() * sizeof(float));
+        
+        GLuint blue_texture;
+        glGenTextures(1, &blue_texture);
+        glBindTexture(GL_TEXTURE_2D, blue_texture);
+        unsigned char blue_pixel[] = {255, 255, 255, 80}; // Semi-transparent
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 1, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, blue_pixel);
+        text_shader_.setUniformValue("textTexture", 0);
+        
+        glDrawArrays(GL_TRIANGLES, 0, 6);
+        glDeleteTextures(1, &blue_texture);
+        
+        vbo_.release();
+        vao_.release();
+    }
+    */
     
     // Enable blending for text rendering
     GLboolean blendEnabled;
@@ -326,15 +472,15 @@ void TextRenderer::renderTextInternal(const QString& text, float x, float y, flo
         float h = ch.size.height() * scale;
         
         // Debug character positioning for single chars
-        if (text.length() == 1) {
-            printf("Char '%s': currentX=%.1f, bearing.x=%.1f, final_xpos=%.1f, texture_size=[%.1fx%.1f]\n", 
-                   text.toStdString().c_str(), currentX, ch.bearing.x() * scale, xpos, w, h);
-        }
+        // if (text.length() == 1) {
+        //     printf("Char '%s': currentX=%.1f, bearing.x=%.1f, final_xpos=%.1f, texture_size=[%.1fx%.1f]\n", 
+        //            text.toStdString().c_str(), currentX, ch.bearing.x() * scale, xpos, w, h);
+        // }
         
-        // DEBUG: Show text bounding box
+        // DEBUG: Show text bounding box for negative axis labels
         /*
-        if (text.length() == 1) {
-            // First render a semi-transparent background quad
+        if (text.length() > 1 && (text.contains("-X") || text.contains("-Y") || text.contains("-Z"))) {
+            // First render a semi-transparent red background quad to show bounding box
             std::vector<float> bg_vertices = {
                 // Red background to show bounding box
                 xpos,     ypos + h,   -0.001f,   0.0f, 0.0f,   1.0f, 0.0f, 0.0f,  // Red color
@@ -436,4 +582,75 @@ void TextRenderer::endBatch()
     
     batching_active_ = false;
     batch_vertices_.clear();
+}
+
+void TextRenderer::renderMultiCharacterString(const QString& text, float x, float y, float scale, 
+                                             const QVector3D& color, bool centered, float z)
+{
+    if (!initialized_ || text.isEmpty()) return;
+    
+    // Create or get string texture
+    Character stringTexture = loadStringTexture(text);
+    
+    // Calculate positioning for centering
+    if (centered) {
+        float textureWidth = stringTexture.size.width() * scale;
+        float textureHeight = stringTexture.size.height() * scale;
+        float bearingX = stringTexture.bearing.x() * scale;
+        float bearingY = stringTexture.bearing.y() * scale;
+        
+        // Center the string texture just like single characters
+        x = x - bearingX - textureWidth * 0.5f;
+        y = y + bearingY - textureHeight * 0.5f;
+    }
+    
+    // Enable blending for text rendering
+    GLboolean blendEnabled;
+    glGetBooleanv(GL_BLEND, &blendEnabled);
+    if (!blendEnabled) {
+        glEnable(GL_BLEND);
+    }
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    
+    text_shader_.bind();
+    text_shader_.setUniformValue("projection", current_projection_);
+    vao_.bind();
+    
+    // Calculate rendering position
+    float xpos = x + stringTexture.bearing.x() * scale;
+    float ypos = y - stringTexture.bearing.y() * scale;
+    float w = stringTexture.size.width() * scale;
+    float h = stringTexture.size.height() * scale;
+    
+    // Generate quad vertices for the entire string texture
+    std::vector<float> vertices = {
+        // positions        // texture coords   // colors
+        xpos,     ypos + h,   z,   0.0f, 0.0f,   color.x(), color.y(), color.z(),
+        xpos,     ypos,       z,   0.0f, 1.0f,   color.x(), color.y(), color.z(),
+        xpos + w, ypos,       z,   1.0f, 1.0f,   color.x(), color.y(), color.z(),
+        
+        xpos,     ypos + h,   z,   0.0f, 0.0f,   color.x(), color.y(), color.z(),
+        xpos + w, ypos,       z,   1.0f, 1.0f,   color.x(), color.y(), color.z(),
+        xpos + w, ypos + h,   z,   1.0f, 0.0f,   color.x(), color.y(), color.z()
+    };
+    
+    // Upload vertex data
+    vbo_.bind();
+    vbo_.allocate(vertices.data(), vertices.size() * sizeof(float));
+    
+    // Bind string texture
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, stringTexture.textureId);
+    text_shader_.setUniformValue("textTexture", 0);
+    
+    // Render quad
+    glDrawArrays(GL_TRIANGLES, 0, 6);
+    
+    vao_.release();
+    text_shader_.release();
+    
+    // Restore blend state
+    if (!blendEnabled) {
+        glDisable(GL_BLEND);
+    }
 }

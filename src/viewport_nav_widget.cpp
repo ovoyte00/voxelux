@@ -99,6 +99,15 @@ void ViewportNavWidget::regenerateSortedWidget(const QMatrix4x4& camera_view)
     const auto& y_color = Colors::YAxis();
     const auto& z_color = Colors::ZAxis();
     
+    // DEBUG: Print the actual colors being used
+    static bool colors_printed = false;
+    if (!colors_printed) {
+        qDebug() << "X-axis color:" << x_color[0] << x_color[1] << x_color[2];
+        qDebug() << "Y-axis color:" << y_color[0] << y_color[1] << y_color[2];
+        qDebug() << "Z-axis color:" << z_color[0] << z_color[1] << z_color[2];
+        colors_printed = true;
+    }
+    
     // Calculate depth for each sphere using camera matrix for sorting
     float sphere_positions[6][3] = {
         { axis_distance, 0.0f, 0.0f}, // +X
@@ -207,6 +216,8 @@ void ViewportNavWidget::regenerateSortedWidget(const QMatrix4x4& camera_view)
         billboard.color = QVector3D(sphere_colors[i][0], sphere_colors[i][1], sphere_colors[i][2]);
         billboard.positive = sphere_positive[i];
         billboard.depth = sphere_depths[i];
+        // Store original sphere index for correct text mapping
+        billboard.sphere_index = i;
         billboard_data_.push_back(billboard);
     }
     
@@ -246,43 +257,50 @@ void ViewportNavWidget::render(const QMatrix4x4& view, const QMatrix4x4& project
 
 int ViewportNavWidget::hitTest(const QPoint& pos, const QMatrix4x4& view, const QMatrix4x4& projection)
 {
-    // Use the same positioning as the render method
-    const float widget_size = 90.0f; // Match render method
-    const float margin = 30.0f;
+    // Use the same positioning as handleMouseMove
+    const float widget_size = 90.0f;
+    const float margin = 20.0f; // Match handleMouseMove
+    const float hover_radius = 45.0f;
     float widget_center_x = parent_widget_->width() - margin - widget_size/2;
     float widget_center_y = margin + widget_size/2;
     
     float dx = pos.x() - widget_center_x;
     float dy = (parent_widget_->height() - pos.y()) - widget_center_y;
+    float distance_from_center = sqrt(dx*dx + dy*dy);
     
-    // Check if within widget bounds
-    if (std::abs(dx) > widget_size/2 || std::abs(dy) > widget_size/2) {
+    // Check if within circular widget bounds
+    if (distance_from_center > hover_radius) {
         return -1;
     }
     
-    // Normalize to widget space [-1, 1]
-    dx = dx / (widget_size/2);
-    dy = dy / (widget_size/2);
+    // Convert screen position to widget-local normalized coordinates [-1, 1]
+    float widget_local_x = (2.0f * dx) / widget_size; // dx is already relative to widget center
+    float widget_local_y = (2.0f * dy) / widget_size; // dy is already relative to widget center
     
-    // Apply inverse camera rotation
-    QMatrix4x4 camera_view = view;
-    QMatrix4x4 inv_rot;
+    // Use the same transformation as rendering: extract rotation-only view matrix
+    QMatrix4x4 rotation_only_view;
     for (int i = 0; i < 3; i++) {
         for (int j = 0; j < 3; j++) {
-            inv_rot(i, j) = camera_view(j, i); // Transpose for rotation inverse
+            rotation_only_view(i, j) = view(i, j);
         }
     }
-    inv_rot(3, 3) = 1.0f;
+    rotation_only_view(3, 3) = 1.0f;
     
-    QVector3D mouse_pos(dx, dy, 0);
-    mouse_pos = inv_rot.mapVector(mouse_pos);
+    // For hit testing, we need to find which 3D sphere position, when transformed
+    // to screen space, is closest to our mouse position
+    // Instead of trying to unproject the mouse, we'll project each sphere and compare in 2D
     
-    // Check sphere hits
-    const float axis_distance = 1.0f;
-    const float sphere_size = 0.12f;
-    const float hit_radius = sphere_size * 1.5f;
+    // Build the same MVP matrix as rendering
+    QMatrix4x4 widget_ortho;
+    widget_ortho.ortho(-1.0f, 1.0f, -1.0f, 1.0f, -10.0f, 10.0f);
+    QMatrix4x4 mvp = widget_ortho * rotation_only_view;
     
-    // Sphere positions
+    // Check sphere hits - match the rendering parameters
+    const float axis_distance = 0.85f; // Match regenerateSortedWidget value
+    const float widget_radius = 45.0f * 0.45f; // widget_size/2 * 0.45 = 45 * 0.45 = 20.25
+    const float sphere_base_radius = 0.73f; // Match regenerateSortedWidget sphere_radius
+    
+    // Sphere positions in 3D
     QVector3D sphere_positions[6] = {
         QVector3D( axis_distance, 0.0f, 0.0f),  // +X
         QVector3D(-axis_distance, 0.0f, 0.0f),  // -X
@@ -295,12 +313,46 @@ int ViewportNavWidget::hitTest(const QPoint& pos, const QMatrix4x4& view, const 
     float closest_dist = std::numeric_limits<float>::max();
     int closest_sphere = -1;
     
+    // Project each sphere to screen space and compare with mouse position in 2D
     for (int i = 0; i < 6; i++) {
-        float dist = (sphere_positions[i] - mouse_pos).length();
+        // Transform sphere position to screen space
+        QVector4D world_pos(sphere_positions[i], 1.0f);
+        QVector4D clip_pos = mvp * world_pos;
         
-        if (dist < hit_radius && dist < closest_dist) {
-            closest_dist = dist;
+        // Skip if behind camera
+        if (clip_pos.w() <= 0.0f) continue;
+        
+        // Convert to normalized device coordinates
+        QVector3D ndc = clip_pos.toVector3DAffine() / clip_pos.w();
+        
+        // Calculate hit radius - larger than visual radius so you can hover anywhere on the circle
+        // Make hit radius about 2.0x larger than the visual radius
+        float sphere_screen_radius = sphere_base_radius * widget_radius * 0.32f * 2.0f; // 2.0x bigger for easier hovering
+        // Convert to normalized space (widget is 90px, so normalized radius = screen_radius / 45)
+        float sphere_radius_normalized = sphere_screen_radius / 45.0f;
+        
+        // DEBUG: Print radius calculations for first sphere only
+        static bool debug_radius = false;
+        if (i == 0 && !debug_radius) {
+            qDebug() << "Radius debug - base:" << sphere_base_radius << "widget_radius:" << widget_radius << "screen_radius:" << sphere_screen_radius << "normalized:" << sphere_radius_normalized;
+            debug_radius = true;
+        }
+        
+        // Compare in 2D screen space
+        float dx = ndc.x() - widget_local_x;
+        float dy = ndc.y() - widget_local_y;
+        float dist_2d = sqrt(dx*dx + dy*dy);
+        
+        // DEBUG: Print close attempts for sphere 0 (X)
+        if (i == 0 && dist_2d < 0.5f) { // Print when we're somewhat close
+            qDebug() << "Close to sphere 0: dist=" << dist_2d << "radius=" << sphere_radius_normalized << "ndc=" << ndc.x() << ndc.y() << "mouse=" << widget_local_x << widget_local_y;
+        }
+        
+        if (dist_2d < sphere_radius_normalized && dist_2d < closest_dist) {
+            closest_dist = dist_2d;
             closest_sphere = i;
+            // DEBUG: Print when we get a hit
+            qDebug() << "HIT! Sphere" << i << "radius:" << sphere_radius_normalized << "dist:" << dist_2d;
         }
     }
     
@@ -311,19 +363,21 @@ bool ViewportNavWidget::handleMouseMove(QMouseEvent* event, const QMatrix4x4& vi
 {
     if (!visible_) return false;
     
-    // Check if mouse is in widget area
+    // Check if mouse is in circular widget area
     const float widget_size = 90.0f;
     const float margin = 20.0f;
+    const float hover_radius = 45.0f; // Same radius as hover background circle
     float widget_center_x = parent_widget_->width() - margin - widget_size/2;
     float widget_center_y = margin + widget_size/2;
     
     float dx = event->pos().x() - widget_center_x;
     float dy = (parent_widget_->height() - event->pos().y()) - widget_center_y;
+    float distance_from_center = sqrt(dx*dx + dy*dy);
     
-    bool in_widget_area = (std::abs(dx) <= widget_size/2 && std::abs(dy) <= widget_size/2);
+    bool in_widget_circle = (distance_from_center <= hover_radius);
     
     int hit = hitTest(event->pos(), view, projection);
-    int new_hover_state = (hit >= 0) ? hit : -1;
+    int new_hover_state = in_widget_circle ? (hit >= 0 ? hit : -2) : -1; // Use -2 for circle hover, -1 for no hover
     
     // Update hover state
     if (hovered_sphere_ != new_hover_state) {
@@ -331,9 +385,11 @@ bool ViewportNavWidget::handleMouseMove(QMouseEvent* event, const QMatrix4x4& vi
         if (parent_widget_) {
             parent_widget_->update();
         }
+        // DEBUG: Only show when hover state changes
+        qDebug() << "Hover state changed to:" << hovered_sphere_ << "(hit:" << hit << "in_circle:" << in_widget_circle << ")";
     }
     
-    return in_widget_area;
+    return in_widget_circle;
 }
 
 bool ViewportNavWidget::handleMouseRelease(QMouseEvent* event, const QMatrix4x4& view, const QMatrix4x4& projection)
@@ -523,8 +579,8 @@ void ViewportNavWidget::renderScreenSpaceElements(const QMatrix4x4& view, const 
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     
-    // Render hover background first (lowest layer)
-    if (hovered_sphere_ >= 0) {
+    // Render hover background when mouse is anywhere in the circular widget area
+    if (hovered_sphere_ >= 0 || hovered_sphere_ == -2) {
         const float hover_radius = 45.0f; // 45px radius for 90px diameter, fitting 90x90 widget area
         const float hover_alpha = Theme::instance().alpha().hover_background;
         
@@ -647,15 +703,15 @@ void ViewportNavWidget::renderScreenSpaceElements(const QMatrix4x4& view, const 
                 widget_vao_.release();
             }
             
-            // Render text for this sphere
-            renderTextForSphere(i, screen_x, screen_y, view, projection);
+            // Render text for this sphere - find correct position for the specific sphere_index
+            renderTextForSphere(i, billboard.sphere_index, screen_x, screen_y, view, projection);
         }
     }
 }
 
-void ViewportNavWidget::renderTextForSphere(int sphere_index, float screen_x, float screen_y, const QMatrix4x4& view, const QMatrix4x4& projection)
+void ViewportNavWidget::renderTextForSphere(int billboard_index, int sphere_index, float screen_x, float screen_y, const QMatrix4x4& view, const QMatrix4x4& projection)
 {
-    if (!parent_widget_ || sphere_index >= billboard_data_.size()) return;
+    if (!parent_widget_ || billboard_index >= billboard_data_.size()) return;
     
     // Sphere labels - match the increased axis distance
     const float axis_distance = 0.85f; // Match regenerateSortedWidget value
@@ -674,7 +730,7 @@ void ViewportNavWidget::renderTextForSphere(int sphere_index, float screen_x, fl
         {QVector3D(0.0f, 0.0f, -axis_distance), "-Z", false}  // -Z
     };
     
-    const auto& billboard = billboard_data_[sphere_index];
+    const auto& billboard = billboard_data_[billboard_index]; // Use billboard_index for position
     
     // Find matching sphere label by position
     int label_index = -1;
@@ -688,10 +744,15 @@ void ViewportNavWidget::renderTextForSphere(int sphere_index, float screen_x, fl
     
     if (label_index < 0) return;
     
-    // Determine visibility and color
+    // Determine visibility and color using sphere_index for hover detection
     bool is_hovered = (hovered_sphere_ == sphere_index);
     bool show_label = false;
     QVector3D text_color;
+    
+    // DEBUG: Print hover state (only when hovering)
+    if (is_hovered) {
+        qDebug() << "Sphere" << sphere_index << "is hovered - should show white text";
+    }
     
     if (spheres[label_index].positive) {
         // Positive axes: always show text
@@ -711,7 +772,9 @@ void ViewportNavWidget::renderTextForSphere(int sphere_index, float screen_x, fl
         QMatrix4x4 screen_projection;
         screen_projection.ortho(0.0f, float(parent_widget_->width()), 0.0f, float(parent_widget_->height()), -1.0f, 1.0f);
         
-        text_renderer_.renderTextCentered(spheres[label_index].label, screen_x, screen_y, 1.0f, 
+        // Use smaller scale for negative axes to fit better in the sphere
+        float text_scale = spheres[label_index].positive ? 1.0f : 0.8f;
+        text_renderer_.renderTextCentered(spheres[label_index].label, screen_x, screen_y, text_scale, 
                                         text_color, screen_projection);
         
         // Re-bind widget shader context
