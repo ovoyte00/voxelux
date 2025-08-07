@@ -15,6 +15,7 @@ if(Qt6_FOUND AND OPENGL_FOUND)
         viewport_widget.cpp
         viewport_nav_widget.cpp
         text_renderer.cpp
+        view_animation.cpp
     )
     
     target_link_libraries(voxelux 
@@ -28,7 +29,7 @@ if(Qt6_FOUND AND OPENGL_FOUND)
     )
     
     target_compile_features(voxelux PRIVATE cxx_std_20)
-    target_include_directories(voxelux PRIVATE ${OPENGL_INCLUDE_DIR})
+    target_include_directories(voxelux PRIVATE ${OPENGL_INCLUDE_DIR} ${CMAKE_SOURCE_DIR}/include)
     target_compile_definitions(voxelux PRIVATE VOXELUX_USE_OPENGL)
     
     # Set Qt6 path for runtime on macOS

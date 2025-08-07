@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <cfloat>
 #include "theme.h"
+#include "view_animation.h"
 #include <QMenuBar>
 #include <QStatusBar>
 #include <QToolBar>
@@ -104,6 +105,8 @@ public:
         rotation_.normalize();
     }
     
+    QQuaternion get_rotation() const { return rotation_; }
+    
     float get_distance() const { return distance_; }
     void set_distance(float distance) { distance_ = qBound(1.0f, distance, 5000.0f); }
     
@@ -150,6 +153,10 @@ public:
         
         // Create navigation widget
         nav_widget_ = std::make_unique<ViewportNavWidget>(this);
+        
+        // Initialize professional smooth camera transition system
+        camera_transition_ = std::make_unique<CameraTransition>(this);
+        camera_transition_->setBaseDuration(100.0f);
     }
 
 private:
@@ -172,6 +179,9 @@ private:
     
     // Viewport widgets
     std::unique_ptr<ViewportNavWidget> nav_widget_;
+    
+    // Professional smooth camera transition system
+    std::unique_ptr<CameraTransition> camera_transition_;
     
     // Gesture tracking
     float gesture_start_distance_ = 0.0f;
@@ -244,7 +254,7 @@ private slots:
                 angle_x = 0.0f;
                 break;
             case 1: // Y axis
-                angle_x = -90.0f;
+                angle_x = positive ? -90.0f : 90.0f;  // +Y looks down, -Y looks up
                 angle_y = 0.0f;
                 break;
             case 2: // Z axis
@@ -253,9 +263,16 @@ private slots:
                 break;
         }
         
-        // Set camera rotation to look at the axis
-        camera_.set_rotation(QQuaternion::fromEulerAngles(angle_x, angle_y, 0.0f));
-        update();
+        // Start professional smooth camera transition
+        QQuaternion target_rotation = QQuaternion::fromEulerAngles(angle_x, angle_y, 0.0f);
+        camera_transition_->startRotationTransition(
+            camera_.get_rotation(),
+            target_rotation,
+            [this](const QQuaternion& rotation) {
+                camera_.set_rotation(rotation);
+                update(); // Trigger viewport refresh
+            }
+        );
     }
     
     // Smart mouse and trackpad detection (Blender-style)
