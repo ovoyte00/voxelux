@@ -18,19 +18,17 @@ out vec3 view_pos;
 out vec2 screen_uv;
 
 void main() {
-    // Create a world space position for the grid plane
-    // We'll create a large plane at Y=0 (XZ plane like Blender)
-    vec3 world_position = position * grid_scale;
-    world_position.y = 0.0; // Grid at Y=0 (ground plane)
+    // Transform vertex position by model matrix first
+    vec4 world_position = model * vec4(position, 1.0);
     
     // Transform to view space
-    vec4 view_position = view * vec4(world_position, 1.0);
+    vec4 view_position = view * world_position;
     
     // Transform to clip space
     gl_Position = projection * view_position;
     
-    // Pass world position to fragment shader
-    world_pos = world_position;
+    // Pass world position to fragment shader for grid calculation
+    world_pos = world_position.xyz;
     view_pos = view_position.xyz;
     screen_uv = texCoord;
 }

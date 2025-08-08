@@ -38,6 +38,10 @@ struct Point2D {
     Point2D(float x = 0, float y = 0) : x(x), y(y) {}
     Point2D operator+(const Point2D& other) const { return {x + other.x, y + other.y}; }
     Point2D operator-(const Point2D& other) const { return {x - other.x, y - other.y}; }
+    Point2D operator*(float scalar) const { return {x * scalar, y * scalar}; }
+    Point2D operator/(float scalar) const { return {x / scalar, y / scalar}; }
+    Point2D& operator*=(float scalar) { x *= scalar; y *= scalar; return *this; }
+    Point2D& operator+=(const Point2D& other) { x += other.x; y += other.y; return *this; }
 };
 
 struct Rect2D {
@@ -112,7 +116,12 @@ enum class EventType {
     KEY_PRESS,
     KEY_RELEASE,
     WINDOW_RESIZE,
-    WINDOW_CLOSE
+    WINDOW_CLOSE,
+    TRACKPAD_SCROLL,
+    TRACKPAD_PAN,
+    TRACKPAD_ZOOM,
+    TRACKPAD_ROTATE,
+    SMART_MOUSE_GESTURE
 };
 
 enum class MouseButton {
@@ -139,10 +148,24 @@ struct InputEvent {
     float wheel_delta;
     double timestamp;
     
+    // Extended data for trackpad and smart mouse events
+    struct TrackpadData {
+        float scale_factor = 1.0f;
+        float rotation_angle = 0.0f;
+        bool direction_inverted = false;
+    } trackpad;
+    
+    struct SmartMouseData {
+        float pressure = 0.0f;
+        int gesture_type = 0; // Maps to SmartMouseEvent::Gesture
+    } smart_mouse;
+    
     // Convenience methods
     bool has_modifier(KeyModifier mod) const { return (modifiers & static_cast<uint32_t>(mod)) != 0; }
     bool is_mouse_event() const;
     bool is_keyboard_event() const;
+    bool is_trackpad_event() const;
+    bool is_smart_mouse_event() const;
 };
 
 // Event handling result

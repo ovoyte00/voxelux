@@ -82,4 +82,15 @@ bool InputEvent::is_keyboard_event() const {
            type == EventType::KEY_RELEASE;
 }
 
+bool InputEvent::is_trackpad_event() const {
+    return type == EventType::TRACKPAD_SCROLL ||
+           type == EventType::TRACKPAD_PAN ||
+           type == EventType::TRACKPAD_ZOOM ||
+           type == EventType::TRACKPAD_ROTATE;
+}
+
+bool InputEvent::is_smart_mouse_event() const {
+    return type == EventType::SMART_MOUSE_GESTURE;
+}
+
 } // namespace voxel_canvas

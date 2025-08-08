@@ -9,7 +9,7 @@
  * Voxel Canvas UI - OpenGL renderer implementation
  */
 
-#include "glad/glad.h"
+#include "glad/gl.h"
 #include "canvas_ui/canvas_renderer.h"
 #include "canvas_ui/canvas_window.h"
 #include "canvas_ui/font_system.h"

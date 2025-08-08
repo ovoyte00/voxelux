@@ -10,7 +10,7 @@ in vec2 screen_uv;
 uniform vec3 camera_position;
 uniform float camera_distance;
 uniform vec4 grid_color;
-uniform vec4 grid_emphasis_color;
+uniform vec4 grid_major_color;
 uniform vec4 grid_axis_x_color;
 uniform vec4 grid_axis_z_color;
 uniform float line_size;
@@ -34,39 +34,41 @@ float get_axis_line(float pos, float derivative, float line_width) {
 }
 
 void main() {
-    // Calculate derivatives for anti-aliasing (like Blender)
+    // Calculate derivatives for anti-aliasing
     vec2 grid_pos = world_pos.xz;
     vec2 derivative = abs(dFdx(grid_pos)) + abs(dFdy(grid_pos));
     
-    // Distance-based fading using your archived implementation logic
+    // Distance-based fading
     float distance_to_camera = length(view_pos);
     
-    // Angle-based fading (reduce grid intensity when viewed edge-on) - your implementation
+    // Professional angle-based fading for grid visibility
     vec3 view_dir = normalize(view_pos);
     float angle = 1.0 - abs(view_dir.y); // Fade when looking parallel to grid
-    angle = pow(angle, 1.2); // Much less aggressive power curve
-    float angle_fade = 1.0 - angle * 0.3; // Much reduced fade strength from 0.7 to 0.3
+    angle = angle * angle; // Smooth transition curve
+    float angle_fade = 1.0 - angle * angle; // Standard double square fade
     
-    // More gradual distance fade - starts much later and extends much further
-    float distance_fade = 1.0 - smoothstep(camera_distance * 3.0, camera_distance * 8.0, distance_to_camera);
+    // Distance-based grid fade for depth perception
+    float fade_start = camera_distance * 50.0; // Begin fade distance
+    float fade_end = camera_distance * 100.0;   // Complete fade distance
+    float distance_fade = 1.0 - smoothstep(fade_start, fade_end, distance_to_camera);
     
     vec3 final_color = vec3(0.0);
     float final_alpha = 0.0;
     
-    // Multiple grid scales for detail levels using your original dynamic approach
+    // Multiple grid scales for detail levels
     float scaleA = 1.0;   // Fine grid
     float scaleB = 10.0;  // Medium grid  
     float scaleC = 100.0; // Coarse grid
     
-    // Calculate grid resolution for level-of-detail blending (your original approach)
+    // Calculate grid resolution for level-of-detail blending
     float grid_res = length(derivative);
     
-    // Multi-level grid system with level-of-detail fading (your original implementation)
+    // Multi-level grid system with level-of-detail fading
     float blendA = 1.0 - smoothstep(scaleA * 0.5, scaleA * 4.0, grid_res);
     float blendB = 1.0 - smoothstep(scaleB * 0.5, scaleB * 4.0, grid_res);
     float blendC = 1.0 - smoothstep(scaleC * 0.5, scaleC * 4.0, grid_res);
     
-    // Apply cubic blending for smooth transitions (your original approach)
+    // Apply cubic blending for smooth transitions
     blendA = blendA * blendA * blendA;
     blendB = blendB * blendB * blendB;
     blendC = blendC * blendC * blendC;
@@ -75,40 +77,44 @@ void main() {
     float gridB = get_grid_line(grid_pos, derivative, scaleB);
     float gridC = get_grid_line(grid_pos, derivative, scaleC);
     
-    // Dynamic alpha values based on zoom level (your original implementation)
-    // 1-unit grid: becomes more visible as you zoom in close
-    float alpha1 = gridA * blendA * (0.1 + blendA * 0.4); // Dynamic from 0.1 to 0.5
+    // Grid hierarchy using color mixing approach (like Blender)
+    // Base grid uses regular color, emphasis levels use emphasis color
+    float gridAlpha = 0.0;
+    vec3 gridColor = grid_color.rgb;
     
-    // 10-unit grid: always slightly more visible than 1-unit
-    float alpha10 = 0.0;
+    // Fine grid (1 unit) - base color with base alpha
+    float baseAlpha = grid_color.a;  // Use alpha from grid_color uniform
+    float majorAlpha = grid_major_color.a;  // Use alpha from major grid color
+    
+    if (blendA > 0.01) {
+        float a1 = gridA * blendA * baseAlpha;
+        gridAlpha = a1;
+    }
+    
+    // Medium grid (10 units) - mix towards major color and alpha
     if (blendB > 0.01) {
-        alpha10 = gridB * blendB * (0.3 + blendB * 0.3); // Dynamic from 0.3 to 0.6
+        float a10 = gridB * blendB;
+        float mixedAlpha = mix(baseAlpha, majorAlpha, blendB) * a10;
+        if (mixedAlpha > gridAlpha) {
+            gridColor = mix(grid_color.rgb, grid_major_color.rgb, blendB);
+            gridAlpha = mixedAlpha;
+        }
     }
     
-    // 100-unit grid: most visible at far distances
-    float alpha100 = 0.0;
+    // Coarse grid (100 units) - full major color and alpha
     if (blendC > 0.01) {
-        alpha100 = gridC * blendC * (0.4 + blendC * 0.4); // Dynamic from 0.4 to 0.8
+        float a100 = gridC * blendC * majorAlpha;
+        if (a100 > gridAlpha) {
+            gridColor = grid_major_color.rgb;
+            gridAlpha = a100;
+        }
     }
     
-    // Apply distance and angle fading to each grid level
-    alpha1 *= distance_fade * angle_fade;
-    alpha10 *= distance_fade * angle_fade;
-    alpha100 *= distance_fade * angle_fade;
+    // Apply distance and angle fading
+    gridAlpha *= distance_fade * angle_fade;
     
-    // Combine alphas - higher level grids take precedence when visible (your original approach)
-    final_alpha = max(alpha1, max(alpha10, alpha100));
-    
-    // Color mixing based on grid emphasis (your original approach)
-    vec3 final_color_rgb = grid_color.rgb;
-    if (blendB > 0.01) {
-        final_color_rgb = mix(final_color_rgb, grid_emphasis_color.rgb, blendB * 0.5);
-    }
-    if (blendC > 0.01) {
-        final_color_rgb = mix(final_color_rgb, grid_emphasis_color.rgb, blendC * 0.7);
-    }
-    
-    final_color = final_color_rgb;
+    final_alpha = gridAlpha;
+    final_color = gridColor;
     
     // Axis lines (X=Red, Z=Blue)
     float axis_width = line_size * 2.0;
@@ -127,5 +133,6 @@ void main() {
         final_color = mix(final_color, grid_axis_z_color.rgb, z_axis);
     }
     
+    // Output final color with alpha blending
     color = vec4(final_color, final_alpha);
 }

@@ -79,6 +79,7 @@ private:
     void setup_opengl_context();
     void setup_callbacks();
     InputEvent create_input_event(EventType type) const;
+    bool is_smart_mouse_or_trackpad(double x_offset, double y_offset);
     
     // GLFW window handle
     GLFWwindow* window_;
@@ -102,6 +103,7 @@ private:
     Point2D last_mouse_pos_;
     bool mouse_buttons_[3] = {false, false, false}; // left, right, middle
     uint32_t keyboard_modifiers_ = 0;
+    bool natural_scroll_direction_ = false; // Smart mouse/trackpad scroll direction
     
     // Initialization state
     bool initialized_ = false;
@@ -132,8 +134,12 @@ public:
     void render_regions();
     
     // Event handling
+    bool handle_event(const InputEvent& event);
     RegionID find_region_at_point(const Point2D& point) const;
     bool handle_region_resize(const InputEvent& event);
+    
+    // Access methods
+    CanvasRegion* get_root_region() const;
     
     // Workspace integration
     void save_layout_to_workspace(const std::string& workspace_name);

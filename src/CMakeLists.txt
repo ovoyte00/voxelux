@@ -10,6 +10,9 @@
 # Core library modules
 add_subdirectory(core)
 
+# Platform-specific helpers
+add_subdirectory(platform)
+
 # Canvas UI library
 add_subdirectory(canvas_ui)
 

@@ -44,6 +44,11 @@ EventResult EventRouter::route_event(const InputEvent& event) {
     
     processing_event_ = true;
     
+    // Debug: Log event routing
+    if (event.is_mouse_event()) {
+        std::cout << "EventRouter routing mouse event" << std::endl;
+    }
+    
     // Apply event filters first
     for (const auto& filter : event_filters_) {
         if (!filter(event)) {
@@ -53,6 +58,14 @@ EventResult EventRouter::route_event(const InputEvent& event) {
     }
     
     EventResult result = EventResult::IGNORED;
+    
+    // First try to route to regions directly (like reference implementation)
+    if (window_ && event.is_mouse_event()) {
+        // Get region manager from window and route events
+        // This matches the reference implementation pattern where regions get first priority
+        std::cout << "Attempting direct region routing..." << std::endl;
+        // TODO: Need to access region manager from window to route events properly
+    }
     
     // Check modal handlers first (they capture all input)
     if (!modal_stack_.empty()) {
@@ -293,6 +306,11 @@ void EventRouter::log_event(const InputEvent& event, const std::string& handler_
         case EventType::KEY_RELEASE: type_name = "KEY_RELEASE"; break;
         case EventType::WINDOW_RESIZE: type_name = "WINDOW_RESIZE"; break;
         case EventType::WINDOW_CLOSE: type_name = "WINDOW_CLOSE"; break;
+        case EventType::TRACKPAD_SCROLL: type_name = "TRACKPAD_SCROLL"; break;
+        case EventType::TRACKPAD_PAN: type_name = "TRACKPAD_PAN"; break;
+        case EventType::TRACKPAD_ZOOM: type_name = "TRACKPAD_ZOOM"; break;
+        case EventType::TRACKPAD_ROTATE: type_name = "TRACKPAD_ROTATE"; break;
+        case EventType::SMART_MOUSE_GESTURE: type_name = "SMART_MOUSE_GESTURE"; break;
     }
     
     const char* result_name = "UNKNOWN";

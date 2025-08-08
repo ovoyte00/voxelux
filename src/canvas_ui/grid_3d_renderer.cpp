@@ -5,140 +5,14 @@
  */
 
 #include "canvas_ui/grid_3d_renderer.h"
-#include "glad/glad.h"
+#include "canvas_ui/camera_3d.h"
+#include "glad/gl.h"
 #include <iostream>
 #include <fstream>
 #include <sstream>
 #include <cmath>
 
 namespace voxel_canvas {
-
-// Camera3D implementation
-
-void Camera3D::get_view_matrix(float* matrix) const {
-    // Create view matrix from camera state
-    float pitch_rad = rotation.x * M_PI / 180.0f;
-    float yaw_rad = rotation.y * M_PI / 180.0f;
-    
-    // Calculate camera position from spherical coordinates
-    float cam_x = distance * cos(pitch_rad) * cos(yaw_rad);
-    float cam_y = distance * sin(pitch_rad);
-    float cam_z = distance * cos(pitch_rad) * sin(yaw_rad);
-    
-    // Camera position
-    float eye_x = target.x + cam_x;
-    float eye_y = cam_y;
-    float eye_z = target.y + cam_z;
-    
-    // Look at target
-    float center_x = target.x;
-    float center_y = 0.0f;
-    float center_z = target.y;
-    
-    // Up vector
-    float up_x = 0.0f, up_y = 1.0f, up_z = 0.0f;
-    
-    // Create look-at matrix
-    float forward_x = center_x - eye_x;
-    float forward_y = center_y - eye_y;
-    float forward_z = center_z - eye_z;
-    float forward_len = sqrt(forward_x*forward_x + forward_y*forward_y + forward_z*forward_z);
-    forward_x /= forward_len;
-    forward_y /= forward_len;
-    forward_z /= forward_len;
-    
-    float right_x = forward_y * up_z - forward_z * up_y;
-    float right_y = forward_z * up_x - forward_x * up_z;
-    float right_z = forward_x * up_y - forward_y * up_x;
-    float right_len = sqrt(right_x*right_x + right_y*right_y + right_z*right_z);
-    right_x /= right_len;
-    right_y /= right_len;
-    right_z /= right_len;
-    
-    float up_new_x = right_y * forward_z - right_z * forward_y;
-    float up_new_y = right_z * forward_x - right_x * forward_z;
-    float up_new_z = right_x * forward_y - right_y * forward_x;
-    
-    // Build view matrix (column-major for OpenGL)
-    matrix[0] = right_x;
-    matrix[1] = up_new_x;
-    matrix[2] = -forward_x;
-    matrix[3] = 0.0f;
-    
-    matrix[4] = right_y;
-    matrix[5] = up_new_y;
-    matrix[6] = -forward_y;
-    matrix[7] = 0.0f;
-    
-    matrix[8] = right_z;
-    matrix[9] = up_new_z;
-    matrix[10] = -forward_z;
-    matrix[11] = 0.0f;
-    
-    matrix[12] = -(right_x * eye_x + right_y * eye_y + right_z * eye_z);
-    matrix[13] = -(up_new_x * eye_x + up_new_y * eye_y + up_new_z * eye_z);
-    matrix[14] = -(-forward_x * eye_x + -forward_y * eye_y + -forward_z * eye_z);
-    matrix[15] = 1.0f;
-}
-
-void Camera3D::get_projection_matrix(float* matrix, float aspect_ratio, float fov) const {
-    if (orthographic) {
-        // Orthographic projection
-        float left = -ortho_scale * aspect_ratio;
-        float right = ortho_scale * aspect_ratio;
-        float bottom = -ortho_scale;
-        float top = ortho_scale;
-        float near_plane = 0.1f;
-        float far_plane = 1000.0f;
-        
-        matrix[0] = 2.0f / (right - left);
-        matrix[1] = 0.0f;
-        matrix[2] = 0.0f;
-        matrix[3] = 0.0f;
-        
-        matrix[4] = 0.0f;
-        matrix[5] = 2.0f / (top - bottom);
-        matrix[6] = 0.0f;
-        matrix[7] = 0.0f;
-        
-        matrix[8] = 0.0f;
-        matrix[9] = 0.0f;
-        matrix[10] = -2.0f / (far_plane - near_plane);
-        matrix[11] = 0.0f;
-        
-        matrix[12] = -(right + left) / (right - left);
-        matrix[13] = -(top + bottom) / (top - bottom);
-        matrix[14] = -(far_plane + near_plane) / (far_plane - near_plane);
-        matrix[15] = 1.0f;
-    } else {
-        // Perspective projection
-        float fov_rad = fov * M_PI / 180.0f;
-        float near_plane = 0.1f;
-        float far_plane = 1000.0f;
-        
-        float f = 1.0f / tan(fov_rad * 0.5f);
-        
-        matrix[0] = f / aspect_ratio;
-        matrix[1] = 0.0f;
-        matrix[2] = 0.0f;
-        matrix[3] = 0.0f;
-        
-        matrix[4] = 0.0f;
-        matrix[5] = f;
-        matrix[6] = 0.0f;
-        matrix[7] = 0.0f;
-        
-        matrix[8] = 0.0f;
-        matrix[9] = 0.0f;
-        matrix[10] = (far_plane + near_plane) / (near_plane - far_plane);
-        matrix[11] = -1.0f;
-        
-        matrix[12] = 0.0f;
-        matrix[13] = 0.0f;
-        matrix[14] = (2.0f * far_plane * near_plane) / (near_plane - far_plane);
-        matrix[15] = 0.0f;
-    }
-}
 
 // Grid3DRenderer implementation
 
@@ -151,20 +25,26 @@ Grid3DRenderer::~Grid3DRenderer() {
 
 bool Grid3DRenderer::initialize() {
     if (initialized_) {
+        std::cout << "Grid renderer already initialized" << std::endl;
         return true;
     }
     
+    std::cout << "Initializing grid renderer..." << std::endl;
+    
     if (!load_shaders()) {
-        std::cerr << "Failed to load grid shaders" << std::endl;
+        std::cerr << "ERROR: Failed to load grid shaders" << std::endl;
         return false;
     }
+    std::cout << "Grid shaders loaded successfully" << std::endl;
     
     if (!create_grid_geometry()) {
-        std::cerr << "Failed to create grid geometry" << std::endl;
+        std::cerr << "ERROR: Failed to create grid geometry" << std::endl;
         return false;
     }
+    std::cout << "Grid geometry created successfully" << std::endl;
     
     initialized_ = true;
+    std::cout << "Grid renderer initialization complete" << std::endl;
     return true;
 }
 
@@ -178,24 +58,68 @@ void Grid3DRenderer::shutdown() {
 }
 
 bool Grid3DRenderer::load_shaders() {
-    // Load vertex shader
-    std::ifstream vertex_file("shaders/grid/grid.vert");
+    std::cout << "Loading grid shaders from shaders/grid/" << std::endl;
+    
+    // Load vertex shader - try multiple possible paths
+    std::vector<std::string> vertex_paths = {
+        "../../shaders/grid/grid.vert",     // From build/bin/
+        "../shaders/grid/grid.vert",        // From build/
+        "shaders/grid/grid.vert",           // From project root
+        "./shaders/grid/grid.vert"          // Current directory
+    };
+    
+    std::ifstream vertex_file;
+    std::string used_path;
+    
+    for (const auto& path : vertex_paths) {
+        vertex_file.open(path);
+        if (vertex_file.is_open()) {
+            used_path = path;
+            std::cout << "Found vertex shader at: " << path << std::endl;
+            break;
+        }
+    }
+    
     if (!vertex_file.is_open()) {
-        std::cerr << "Failed to open vertex shader file" << std::endl;
+        std::cerr << "ERROR: Failed to open vertex shader file at any of these paths:" << std::endl;
+        for (const auto& path : vertex_paths) {
+            std::cerr << "  - " << path << std::endl;
+        }
         return false;
     }
+    std::cout << "Vertex shader file opened successfully" << std::endl;
     
     std::stringstream vertex_stream;
     vertex_stream << vertex_file.rdbuf();
     std::string vertex_code = vertex_stream.str();
     vertex_file.close();
     
-    // Load fragment shader
-    std::ifstream fragment_file("shaders/grid/grid.frag");
+    // Load fragment shader - try multiple possible paths
+    std::vector<std::string> fragment_paths = {
+        "../../shaders/grid/grid.frag",     // From build/bin/
+        "../shaders/grid/grid.frag",        // From build/
+        "shaders/grid/grid.frag",           // From project root
+        "./shaders/grid/grid.frag"          // Current directory
+    };
+    
+    std::ifstream fragment_file;
+    
+    for (const auto& path : fragment_paths) {
+        fragment_file.open(path);
+        if (fragment_file.is_open()) {
+            std::cout << "Found fragment shader at: " << path << std::endl;
+            break;
+        }
+    }
+    
     if (!fragment_file.is_open()) {
-        std::cerr << "Failed to open fragment shader file" << std::endl;
+        std::cerr << "ERROR: Failed to open fragment shader file at any of these paths:" << std::endl;
+        for (const auto& path : fragment_paths) {
+            std::cerr << "  - " << path << std::endl;
+        }
         return false;
     }
+    std::cout << "Fragment shader file opened successfully" << std::endl;
     
     std::stringstream fragment_stream;
     fragment_stream << fragment_file.rdbuf();
@@ -250,7 +174,7 @@ bool Grid3DRenderer::load_shaders() {
     u_camera_position_ = glGetUniformLocation(shader_program_, "camera_position");
     u_camera_distance_ = glGetUniformLocation(shader_program_, "camera_distance");
     u_grid_color_ = glGetUniformLocation(shader_program_, "grid_color");
-    u_grid_emphasis_color_ = glGetUniformLocation(shader_program_, "grid_emphasis_color");
+    u_grid_major_color_ = glGetUniformLocation(shader_program_, "grid_major_color");
     u_grid_axis_x_color_ = glGetUniformLocation(shader_program_, "grid_axis_x_color");
     u_grid_axis_z_color_ = glGetUniformLocation(shader_program_, "grid_axis_z_color");
     u_line_size_ = glGetUniformLocation(shader_program_, "line_size");
@@ -309,8 +233,16 @@ bool Grid3DRenderer::create_grid_geometry() {
 
 void Grid3DRenderer::render(const Camera3D& camera, const Rect2D& viewport, const CanvasTheme& theme) {
     if (!initialized_) {
+        std::cout << "ERROR: Grid renderer not initialized" << std::endl;
         return;
     }
+    
+    
+    // Set OpenGL viewport to match the rendering region
+    glViewport(viewport.x, viewport.y, viewport.width, viewport.height);
+    
+    // Disable depth test for now to simplify debugging
+    glDisable(GL_DEPTH_TEST);
     
     // Enable blending for grid transparency
     glEnable(GL_BLEND);
@@ -319,37 +251,47 @@ void Grid3DRenderer::render(const Camera3D& camera, const Rect2D& viewport, cons
     // Use grid shader
     glUseProgram(shader_program_);
     
-    // Dynamic grid scaling based on camera distance (like archived implementation)
-    float dynamic_grid_size = std::max(2000.0f, camera.distance * 6.0f); // Huge grid coverage for far view
+    // Dynamic grid scaling based on camera distance - make it much larger
+    float dynamic_grid_size = std::max(10000.0f, camera.get_distance() * 100.0f);
     
-    // Set matrices
-    float view_matrix[16];
-    float projection_matrix[16];
-    float model_matrix[16] = {
-        dynamic_grid_size/grid_scale_, 0, 0, 0,
-        0, 1, 0, 0,
-        0, 0, dynamic_grid_size/grid_scale_, 0,
-        0, 0, 0, 1
-    };
+    // Set camera aspect ratio
+    const_cast<Camera3D&>(camera).set_aspect_ratio(viewport.width / viewport.height);
     
-    camera.get_view_matrix(view_matrix);
-    camera.get_projection_matrix(projection_matrix, viewport.width / viewport.height);
+    // Get matrices from professional Camera3D system
+    Matrix4x4 view_matrix = camera.get_view_matrix();
+    Matrix4x4 projection_matrix = camera.get_projection_matrix();
     
-    glUniformMatrix4fv(u_view_, 1, GL_FALSE, view_matrix);
-    glUniformMatrix4fv(u_projection_, 1, GL_FALSE, projection_matrix);
-    glUniformMatrix4fv(u_model_, 1, GL_FALSE, model_matrix);
+    // Debug: Print camera position to verify it's correct
+    Vector3D cam_pos = camera.get_position();
+    static int frame_count = 0;
+    if (frame_count++ % 60 == 0) {  // Print every 60 frames
+        std::cout << "Camera: pos(" << cam_pos.x << "," << cam_pos.y << "," << cam_pos.z 
+                  << ") dist=" << camera.get_distance() << std::endl;
+    }
+    
+    // Create model matrix for grid scaling
+    Matrix4x4 model_matrix = Matrix4x4::scale({dynamic_grid_size/grid_scale_, 1.0f, dynamic_grid_size/grid_scale_});
+    
+    // OpenGL expects column-major matrices, but ours are row-major, so transpose
+    glUniformMatrix4fv(u_view_, 1, GL_TRUE, view_matrix.data());
+    glUniformMatrix4fv(u_projection_, 1, GL_TRUE, projection_matrix.data());
+    glUniformMatrix4fv(u_model_, 1, GL_TRUE, model_matrix.data());
     
     // Set camera uniforms
+    if (u_camera_position_ != -1) {
+        Vector3D cam_pos = camera.get_position();
+        glUniform3f(u_camera_position_, cam_pos.x, cam_pos.y, cam_pos.z);
+    }
     if (u_camera_distance_ != -1) {
-        glUniform1f(u_camera_distance_, camera.distance);
+        glUniform1f(u_camera_distance_, camera.get_distance());
     }
     
-    // Set grid appearance uniforms using theme colors (using glUniform4f for cross-platform compatibility)
+    // Set grid appearance uniforms using theme colors
     if (u_grid_color_ != -1) {
-        glUniform4f(u_grid_color_, theme.grid_minor_lines.r, theme.grid_minor_lines.g, theme.grid_minor_lines.b, 1.0f);
+        glUniform4f(u_grid_color_, theme.grid_minor_lines.r, theme.grid_minor_lines.g, theme.grid_minor_lines.b, theme.grid_minor_lines.a);
     }
-    if (u_grid_emphasis_color_ != -1) {
-        glUniform4f(u_grid_emphasis_color_, theme.grid_major_lines.r, theme.grid_major_lines.g, theme.grid_major_lines.b, 1.0f);
+    if (u_grid_major_color_ != -1) {
+        glUniform4f(u_grid_major_color_, theme.grid_major_lines.r, theme.grid_major_lines.g, theme.grid_major_lines.b, 1.0f);
     }
     if (u_grid_axis_x_color_ != -1) {
         glUniform4f(u_grid_axis_x_color_, theme.axis_x_color.r, theme.axis_x_color.g, theme.axis_x_color.b, 1.0f);
@@ -367,6 +309,7 @@ void Grid3DRenderer::render(const Camera3D& camera, const Rect2D& viewport, cons
     // Render grid
     glBindVertexArray(vao_);
     glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+    
     glBindVertexArray(0);
     
     glUseProgram(0);

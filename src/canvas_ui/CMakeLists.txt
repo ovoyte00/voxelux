@@ -18,6 +18,8 @@ add_library(voxelux_canvas_ui
     grid_3d_renderer.cpp
     ui_widgets.cpp
     viewport_3d_editor.cpp
+    viewport_navigation_handler.cpp
+    camera_3d.cpp
     ../glad/glad.c  # GLAD OpenGL loader
 )
 
@@ -34,6 +36,7 @@ target_link_libraries(voxelux_canvas_ui PUBLIC
     ${OPENGL_LIBRARIES}
     glfw
     ${FREETYPE_LIBRARIES}
+    voxelux_platform
 )
 
 target_compile_definitions(voxelux_canvas_ui PRIVATE 

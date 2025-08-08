@@ -11,7 +11,7 @@
 
 #include "canvas_ui/font_system.h"
 #include "canvas_ui/canvas_renderer.h"
-#include "glad/glad.h"
+#include "glad/gl.h"
 
 #include <ft2build.h>
 #include FT_FREETYPE_H

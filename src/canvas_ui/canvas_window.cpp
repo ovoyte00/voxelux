@@ -13,10 +13,11 @@
 #include "canvas_ui/canvas_renderer.h"
 #include "canvas_ui/event_router.h"
 #include "canvas_ui/canvas_region.h"
+#include "voxelux/platform/native_input.h"
 
 #define GLFW_INCLUDE_NONE
 #include <GLFW/glfw3.h>
-#include "glad/glad.h"
+#include "glad/gl.h"
 #include <iostream>
 #include <stdexcept>
 
@@ -42,16 +43,24 @@ static void glfw_framebuffer_size_callback(GLFWwindow* window, int width, int he
 }
 
 static void glfw_mouse_button_callback(GLFWwindow* window, int button, int action, int mods) {
+    std::cout << "GLFW mouse button callback: button=" << button << " action=" << action << std::endl;
     CanvasWindow* canvas_window = static_cast<CanvasWindow*>(glfwGetWindowUserPointer(window));
     if (canvas_window) {
         canvas_window->on_mouse_button(button, action, mods);
+    } else {
+        std::cout << "ERROR: Canvas window pointer is null!" << std::endl;
     }
 }
 
 static void glfw_cursor_pos_callback(GLFWwindow* window, double x, double y) {
     CanvasWindow* canvas_window = static_cast<CanvasWindow*>(glfwGetWindowUserPointer(window));
     if (canvas_window) {
-        canvas_window->on_mouse_move(x, y);
+        // Only process mouse move if cursor is inside the window
+        int width, height;
+        glfwGetWindowSize(window, &width, &height);
+        if (x >= 0 && y >= 0 && x < width && y < height) {
+            canvas_window->on_mouse_move(x, y);
+        }
     }
 }
 
@@ -155,6 +164,15 @@ bool CanvasWindow::initialize() {
     theme_ = CanvasTheme(); // Uses default Blender-inspired colors
     renderer_->set_theme(theme_);
 
+    // Initialize native input helper for better scroll detection
+    if (voxelux::platform::NativeInput::is_available()) {
+        if (voxelux::platform::NativeInput::initialize(window_)) {
+            std::cout << "Native input helper initialized successfully" << std::endl;
+        } else {
+            std::cout << "Warning: Native input helper failed to initialize" << std::endl;
+        }
+    }
+
     initialized_ = true;
     return true;
 }
@@ -163,6 +181,9 @@ void CanvasWindow::shutdown() {
     if (!initialized_) {
         return;
     }
+
+    // Shutdown native input helper
+    voxelux::platform::NativeInput::shutdown();
 
     // Shutdown in reverse order
     workspace_manager_.reset();
@@ -262,7 +283,7 @@ void CanvasWindow::setup_opengl_context() {
     glfwMakeContextCurrent(window_);
     
     // Initialize GLAD
-    if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) {
+    if (!gladLoadGL((GLADloadfunc)glfwGetProcAddress)) {
         throw std::runtime_error("Failed to initialize GLAD");
     }
     
@@ -326,6 +347,8 @@ void CanvasWindow::on_framebuffer_resize(int width, int height) {
 }
 
 void CanvasWindow::on_mouse_button(int button, int action, int mods) {
+    std::cout << "CanvasWindow::on_mouse_button called: button=" << button << " action=" << action << std::endl;
+    
     if (button >= 0 && button < 3) {
         mouse_buttons_[button] = (action == GLFW_PRESS);
     }
@@ -335,8 +358,24 @@ void CanvasWindow::on_mouse_button(int button, int action, int mods) {
     InputEvent event = create_input_event((action == GLFW_PRESS) ? EventType::MOUSE_PRESS : EventType::MOUSE_RELEASE);
     event.mouse_button = static_cast<MouseButton>(button);
     
+    std::cout << "Created input event at (" << event.mouse_pos.x << ", " << event.mouse_pos.y << ")" << std::endl;
+    
+    // Route to regions first (like reference implementation)
+    if (region_manager_) {
+        std::cout << "Trying to route event to regions directly" << std::endl;
+        if (region_manager_->handle_event(event)) {
+            std::cout << "Event handled by region system" << std::endl;
+            return; // Event was handled by regions, don't pass to event router
+        }
+        std::cout << "Event not handled by regions, trying event router" << std::endl;
+    }
+    
     if (event_router_) {
-        event_router_->route_event(event);
+        std::cout << "Routing event through event router" << std::endl;
+        EventResult result = event_router_->route_event(event);
+        std::cout << "Event router result: " << (int)result << std::endl;
+    } else {
+        std::cout << "ERROR: No event router!" << std::endl;
     }
 }
 
@@ -345,14 +384,147 @@ void CanvasWindow::on_mouse_move(double x, double y) {
     
     InputEvent event = create_input_event(EventType::MOUSE_MOVE);
     
+    // Debug: Log mouse move events only when dragging
+    // Remove drag debug output
+    
+    // Route to regions first (like reference implementation)
+    if (region_manager_) {
+        if (region_manager_->handle_event(event)) {
+            return; // Event was handled by regions
+        }
+    }
+    
     if (event_router_) {
         event_router_->route_event(event);
     }
 }
 
+bool CanvasWindow::is_smart_mouse_or_trackpad(double x_offset, double y_offset) {
+    // Smart mouse/trackpad detection
+    // The key difference: smart mouse sends continuous streams of values
+    // while regular mouse wheel sends discrete integer steps
+    
+    // Any non-zero x_offset indicates trackpad/smart mouse
+    if (std::abs(x_offset) > 0.001) {
+        return true; // Has horizontal component = trackpad/smart mouse
+    }
+    
+    // Check for traditional mouse wheel patterns
+    // Regular mouse wheel typically sends exact integer values: ±1.0, ±2.0, ±3.0, etc.
+    if (x_offset == 0.0) {
+        double abs_y = std::abs(y_offset);
+        
+        // Check if this is exactly an integer (within floating point tolerance)
+        double fractional_part = abs_y - std::floor(abs_y);
+        if (fractional_part < 0.001 || fractional_part > 0.999) {
+            // This looks like an integer value
+            // But smart mouse can also send integer-like values in rapid succession
+            // Check our recent history to distinguish
+            
+            // For now, only treat clean multiples of 1.0 as mouse wheel
+            // Smart mouse tends to send many varying values, not clean integers
+            if (abs_y == 1.0 || abs_y == 2.0 || abs_y == 3.0) {
+                // Could be mouse wheel, but check context
+                // Smart mouse sends many events rapidly with varying values
+                // For simplicity, treat as smart mouse if values vary
+                return false; // Assume regular mouse for now
+            }
+        }
+        
+        // Any fractional value indicates smart mouse
+        return true;
+    }
+    
+    // Default to smart mouse for safety
+    return true;
+}
+
 void CanvasWindow::on_mouse_scroll(double x_offset, double y_offset) {
-    InputEvent event = create_input_event(EventType::MOUSE_WHEEL);
-    event.wheel_delta = static_cast<float>(y_offset);
+    // Ignore tiny movements that might be noise
+    if (std::abs(x_offset) < 0.001 && std::abs(y_offset) < 0.001) {
+        return;
+    }
+    
+    // First check if we have a native event with device info
+    voxelux::platform::NativeScrollEvent native_event;
+    bool has_native_event = voxelux::platform::NativeInput::get_next_scroll_event(native_event);
+    
+    bool is_smart_device = false;
+    
+    if (has_native_event) {
+        // Use native detection - this is 100% accurate
+        is_smart_device = (native_event.device_type == voxelux::platform::ScrollDeviceType::SmartMouse ||
+                          native_event.device_type == voxelux::platform::ScrollDeviceType::Trackpad);
+        
+        // Debug output shows native detection
+        const char* device_name = "Unknown";
+        switch (native_event.device_type) {
+            case voxelux::platform::ScrollDeviceType::MouseWheel:
+                device_name = "MouseWheel";
+                break;
+            case voxelux::platform::ScrollDeviceType::Trackpad:
+                device_name = "Trackpad";
+                break;
+            case voxelux::platform::ScrollDeviceType::SmartMouse:
+                device_name = "SmartMouse";
+                break;
+            default:
+                break;
+        }
+        std::cout << "[Native] " << device_name << " x=" << x_offset << " y=" << y_offset << std::endl;
+    } else {
+        // Fallback to pattern detection
+        is_smart_device = is_smart_mouse_or_trackpad(x_offset, y_offset);
+        std::cout << "[Pattern] smart=" << is_smart_device << " x=" << x_offset << " y=" << y_offset << std::endl;
+    }
+    
+    EventType event_type;
+    
+    // Smart mouse/trackpad surface gestures (following Blender's implementation)
+    if (is_smart_device) {
+        // Check modifiers to determine gesture type
+        if (keyboard_modifiers_ & static_cast<uint32_t>(KeyModifier::CMD)) {
+            // Cmd + trackpad surface = zoom
+            event_type = EventType::TRACKPAD_ZOOM;
+            // CMD + smart mouse = zoom
+        } else if (keyboard_modifiers_ & static_cast<uint32_t>(KeyModifier::SHIFT)) {
+            // Shift + trackpad surface = pan
+            event_type = EventType::TRACKPAD_PAN; 
+            // SHIFT + smart mouse = pan
+        } else {
+            // Trackpad surface alone = rotate/orbit
+            event_type = EventType::TRACKPAD_ROTATE;
+            // Smart mouse alone = orbit
+        }
+    } else {
+        // Traditional mouse wheel or simple trackpad scroll
+        event_type = is_smart_device ? EventType::TRACKPAD_SCROLL : EventType::MOUSE_WHEEL;
+    }
+    
+    InputEvent event = create_input_event(event_type);
+    
+    // Only set wheel_delta for actual scroll/zoom events
+    if (event_type == EventType::MOUSE_WHEEL || 
+        event_type == EventType::TRACKPAD_SCROLL || 
+        event_type == EventType::TRACKPAD_ZOOM) {
+        event.wheel_delta = static_cast<float>(y_offset);
+    }
+    
+    // Add trackpad-specific data for all smart device events
+    if (is_smart_device) {
+        event.trackpad.direction_inverted = natural_scroll_direction_;
+        // Store both X and Y deltas for trackpad gestures
+        event.mouse_delta = Point2D(static_cast<float>(x_offset), static_cast<float>(y_offset));
+    }
+    
+    // Event created with appropriate type and deltas
+    
+    // Route to regions first (like reference implementation)
+    if (region_manager_) {
+        if (region_manager_->handle_event(event)) {
+            return; // Event was handled by regions
+        }
+    }
     
     if (event_router_) {
         event_router_->route_event(event);
@@ -436,6 +608,18 @@ void RegionManager::create_default_layout() {
         root->set_editor(EditorFactory::create_editor(EditorType::VIEWPORT_3D));
         std::cout << "Set default editor to 3D Viewport" << std::endl;
     }
+}
+
+bool RegionManager::handle_event(const InputEvent& event) {
+    // Route event to root region, which will handle recursive routing
+    if (auto* root = get_root_region()) {
+        return root->handle_event(event);
+    }
+    return false;
+}
+
+CanvasRegion* RegionManager::get_root_region() const {
+    return get_region(root_region_id_);
 }
 
 RegionID RegionManager::allocate_region_id() {

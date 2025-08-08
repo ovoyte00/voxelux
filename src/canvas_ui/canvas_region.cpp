@@ -197,12 +197,14 @@ void CanvasRegion::render(CanvasRenderer* renderer) {
         // For visible UI regions, ensure they stay renderable for next frame
         bool has_visible_content = !is_split() && (show_header_ || editor_);
         
-        // **Critical Blender Insight**: Clear flags AFTER successful rendering, then re-mark visible content
-        clear_update_flags();
-        
+        // **FIX**: Don't clear flags too aggressively - keep regions visible
+        // Only clear specific flags, but maintain content changed for continuous rendering
+        // This ensures regions stay visible without flickering
         if (has_visible_content) {
-            // Mark for next frame to maintain continuous visibility
-            mark_content_changed();
+            // Keep content changed for continuous visibility
+            invalidation_flags_ = RegionUpdateFlags::CONTENT_CHANGED;
+        } else {
+            clear_update_flags();
         }
         
     } catch (...) {
@@ -283,6 +285,11 @@ void CanvasRegion::render_splitter_handles(CanvasRenderer* renderer) {
 }
 
 bool CanvasRegion::handle_event(const InputEvent& event) {
+    // Debug: Only log clicks, not mouse movement
+    if (event.type == EventType::MOUSE_PRESS) {
+        std::cout << "CanvasRegion received mouse click at (" << event.mouse_pos.x << ", " << event.mouse_pos.y << ")" << std::endl;
+    }
+    
     // If this is a split region, route to children
     if (is_split()) {
         for (auto& child : children_) {
@@ -318,6 +325,9 @@ bool CanvasRegion::handle_event(const InputEvent& event) {
     // Route to editor
     if (editor_) {
         Rect2D content_rect = get_content_bounds();
+        if (event.type == EventType::MOUSE_PRESS) {
+            std::cout << "Routing click to editor" << std::endl;
+        }
         return editor_->handle_event(event, content_rect);
     }
     

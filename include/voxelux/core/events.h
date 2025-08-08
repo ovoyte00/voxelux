@@ -85,6 +85,71 @@ private:
     double x_offset_, y_offset_;
 };
 
+class TrackpadEvent : public SimpleEvent {
+public:
+    enum class Type { 
+        Scroll, 
+        Pan,        // Two-finger pan
+        Zoom,       // Pinch to zoom
+        Rotate,     // Two-finger rotate
+        SmartZoom   // Two-finger tap
+    };
+    
+    TrackpadEvent(Type type, double x, double y, double delta_x, double delta_y, double scale_factor = 1.0, double rotation_angle = 0.0)
+        : type_(type), x_(x), y_(y), delta_x_(delta_x), delta_y_(delta_y), scale_factor_(scale_factor), rotation_angle_(rotation_angle) {}
+    
+    Type type() const { return type_; }
+    double x() const { return x_; }
+    double y() const { return y_; }
+    double delta_x() const { return delta_x_; }
+    double delta_y() const { return delta_y_; }
+    double scale_factor() const { return scale_factor_; }
+    double rotation_angle() const { return rotation_angle_; }
+
+private:
+    Type type_;
+    double x_, y_;
+    double delta_x_, delta_y_;
+    double scale_factor_;
+    double rotation_angle_;
+};
+
+class SmartMouseEvent : public SimpleEvent {
+public:
+    enum class Type {
+        Button,
+        Motion,
+        Gesture
+    };
+    
+    enum class Gesture {
+        None,
+        SwipeLeft,
+        SwipeRight,
+        SwipeUp,
+        SwipeDown,
+        ForceClick,
+        DoubleTap
+    };
+    
+    SmartMouseEvent(Type type, int button, double x, double y, double pressure = 0.0, Gesture gesture = Gesture::None)
+        : type_(type), button_(button), x_(x), y_(y), pressure_(pressure), gesture_(gesture) {}
+    
+    Type type() const { return type_; }
+    int button() const { return button_; }
+    double x() const { return x_; }
+    double y() const { return y_; }
+    double pressure() const { return pressure_; }
+    Gesture gesture() const { return gesture_; }
+
+private:
+    Type type_;
+    int button_;
+    double x_, y_;
+    double pressure_;
+    Gesture gesture_;
+};
+
 // Window Events
 class WindowResizeEvent : public SimpleEvent {
 public:
