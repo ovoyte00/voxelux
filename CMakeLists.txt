@@ -29,13 +29,17 @@ include_directories(include)
 # Find packages
 find_package(OpenGL REQUIRED)
 
-# Find Qt6
-find_package(Qt6 COMPONENTS Core Widgets OpenGL OpenGLWidgets REQUIRED)
+# Find GLFW
+find_package(glfw3 REQUIRED)
+
+# Find FreeType for text rendering
+find_package(Freetype REQUIRED)
+
+# GLAD - Modern OpenGL function loader (better for cross-platform)
+# We'll include GLAD as source files for better control
 
 # Third-party libraries
 option(VOXELUX_USE_SYSTEM_LIBS "Use system libraries" ON)
-
-# GLFW removed - using Qt for windowing
 
 # GLM (OpenGL Mathematics)
 if(VOXELUX_USE_SYSTEM_LIBS)
@@ -51,10 +55,6 @@ if(VOXELUX_USE_SYSTEM_LIBS)
         endif()
     endif()
 endif()
-
-# GLAD removed - using Qt OpenGL for modern graphics
-
-# ImGui removed - using Qt for modern UI
 
 # Core library
 add_subdirectory(src)

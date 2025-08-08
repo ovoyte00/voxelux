@@ -1,0 +1,134 @@
+/*
+ * Copyright (C) 2024 Voxelux
+ * 
+ * This software and its source code are proprietary and confidential.
+ * All rights reserved. No part of this software may be reproduced,
+ * distributed, or transmitted in any form or by any means without
+ * prior written permission from Voxelux.
+ * 
+ * Font system for Canvas UI - Professional text rendering
+ */
+
+#pragma once
+
+#include <string>
+#include <unordered_map>
+#include <memory>
+#include <vector>
+#include "canvas_ui/canvas_core.h"
+
+// Forward declarations
+typedef struct FT_LibraryRec_* FT_Library;
+typedef struct FT_FaceRec_* FT_Face;
+
+namespace voxel_canvas {
+
+// Forward declarations
+class CanvasRenderer;
+
+// Glyph metrics and rendering data
+struct GlyphInfo {
+    unsigned int texture_id = 0;  // OpenGL texture ID for this glyph
+    Point2D size;                  // Size of glyph in pixels
+    Point2D bearing;               // Offset from baseline to left/top of glyph
+    float advance;                 // Horizontal advance to next glyph
+    Rect2D uv_rect;               // UV coordinates in atlas (if using atlas)
+    bool in_atlas = false;        // Whether this glyph is in the texture atlas
+};
+
+// Font face with multiple sizes
+class FontFace {
+public:
+    FontFace(const std::string& path, int size = 14);
+    ~FontFace();
+    
+    bool load();
+    void unload();
+    
+    // Get or create glyph for character
+    GlyphInfo* get_glyph(unsigned int codepoint, int size);
+    
+    // Font metrics
+    float get_line_height(int size) const;
+    float get_ascender(int size) const;
+    float get_descender(int size) const;
+    
+    // Font properties
+    const std::string& get_path() const { return font_path_; }
+    const std::string& get_name() const { return font_name_; }
+    bool is_loaded() const { return face_ != nullptr; }
+    
+private:
+    std::string font_path_;
+    std::string font_name_;
+    FT_Face face_ = nullptr;
+    int default_size_;
+    
+    // Cache of loaded glyphs per size
+    struct SizeCache {
+        int pixel_size;
+        std::unordered_map<unsigned int, GlyphInfo> glyphs;
+        float line_height;
+        float ascender;
+        float descender;
+    };
+    std::unordered_map<int, SizeCache> size_caches_;
+    
+    // Load glyph for specific size
+    GlyphInfo* load_glyph(unsigned int codepoint, int size);
+};
+
+// Main font system manager
+class FontSystem {
+public:
+    FontSystem();
+    ~FontSystem();
+    
+    // Initialize/shutdown
+    bool initialize();
+    void shutdown();
+    
+    // Font management
+    bool load_font(const std::string& name, const std::string& path, int default_size = 14);
+    FontFace* get_font(const std::string& name);
+    
+    // Text rendering
+    Point2D measure_text(const std::string& text, const std::string& font_name, int size);
+    void render_text(CanvasRenderer* renderer, const std::string& text, 
+                    const Point2D& position, const std::string& font_name, 
+                    int size, const ColorRGBA& color);
+    
+    // Default fonts
+    bool load_default_fonts();
+    
+    // Access to FreeType library (for FontFace)
+    FT_Library get_ft_library() const { return ft_library_; }
+    
+private:
+    FT_Library ft_library_ = nullptr;
+    std::unordered_map<std::string, std::unique_ptr<FontFace>> fonts_;
+    bool initialized_ = false;
+    
+    // Texture atlas for small glyphs (optional optimization)
+    struct TextureAtlas {
+        unsigned int texture_id = 0;
+        int width = 2048;
+        int height = 2048;
+        int current_x = 0;
+        int current_y = 0;
+        int row_height = 0;
+    };
+    std::unique_ptr<TextureAtlas> atlas_;
+    
+    // Shader for text rendering
+    unsigned int text_shader_program_ = 0;
+    
+    void create_text_shader();
+    void render_glyph(CanvasRenderer* renderer, const GlyphInfo& glyph, 
+                     const Point2D& position, const ColorRGBA& color);
+};
+
+// Global font system instance
+extern FontSystem* g_font_system;
+
+} // namespace voxel_canvas
