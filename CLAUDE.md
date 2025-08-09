@@ -63,11 +63,16 @@ The project follows a modular C++ architecture:
 
 - **src/core/**: Core engine functionality and data structures
 - **src/renderer/**: Rendering system components
+- **src/canvas_ui/**: Custom UI framework developed for Voxelux
 - **include/**: Public header files
 - **tests/**: Test suite (empty currently)
 - **assets/**: Resources and assets
 - **docs/**: Documentation (empty currently)
 - **lib/**: Third-party libraries
+
+## Custom UI System
+
+Voxelux features a custom-developed Canvas UI framework that follows Blender's multi-use modular system architecture. In this design, every region can be any use type - allowing users to configure their workspace with any combination of viewports, panels, and editors. This provides maximum flexibility for professional workflows where users can adapt the interface to their specific needs.
 
 ## Blender Reference Implementation
 

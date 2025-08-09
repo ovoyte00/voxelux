@@ -39,14 +39,12 @@ class NativeInput;
             return event; // Still pass to GLFW
         }];
     
-    NSLog(@"Voxelux: Native scroll monitoring started");
 }
 
 - (void)stopMonitoring {
     if (eventMonitor) {
         [NSEvent removeMonitor:eventMonitor];
         eventMonitor = nil;
-        NSLog(@"Voxelux: Native scroll monitoring stopped");
     }
 }
 
@@ -103,9 +101,6 @@ class NativeInput;
         native_event.delta_x = event.deltaX;
         native_event.delta_y = event.deltaY;
         
-        std::cout << "[Native] MouseWheel"
-                  << " delta=(" << native_event.delta_x << ", " << native_event.delta_y << ")"
-                  << std::endl;
     }
     
     // Check for natural scrolling

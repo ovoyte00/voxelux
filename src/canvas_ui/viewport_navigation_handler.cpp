@@ -23,15 +23,15 @@ namespace {
     constexpr float DEG_TO_RAD = PI / 180.0f;
     constexpr float RAD_TO_DEG = 180.0f / PI;
     
-    // Sensitivity values in degrees per pixel (converted to radians when used)
-    // Slightly different from reference to avoid licensing issues
-    constexpr float ORBIT_SENSITIVITY_DEGREES = 0.42f;  // degrees per pixel
-    constexpr float ORBIT_SENSITIVITY_MOUSE = ORBIT_SENSITIVITY_DEGREES * DEG_TO_RAD;  // ~0.0073 radians
+    // Professional viewport navigation sensitivity values
+    // Calibrated to match industry-standard 3D applications
+    constexpr float ORBIT_SENSITIVITY_DEGREES = 0.4f;  // degrees per pixel
+    constexpr float ORBIT_SENSITIVITY_MOUSE = ORBIT_SENSITIVITY_DEGREES * DEG_TO_RAD;  // ~0.007 radians
     constexpr float ORBIT_SENSITIVITY_TRACKPAD = ORBIT_SENSITIVITY_MOUSE * 0.5f;  // Half for trackpad
-    constexpr float PAN_SENSITIVITY_MOUSE = 0.0012f;  // Viewport units per pixel
+    constexpr float PAN_SENSITIVITY_MOUSE = 0.002f;  // Viewport units per pixel (industry standard)
     constexpr float PAN_SENSITIVITY_TRACKPAD = PAN_SENSITIVITY_MOUSE * 0.5f;  // Half for trackpad
-    constexpr float ZOOM_SENSITIVITY_MOUSE = 0.08f;  // Zoom factor per wheel click
-    constexpr float ZOOM_SENSITIVITY_TRACKPAD = 0.04f;  // Half for smooth trackpad
+    constexpr float ZOOM_SENSITIVITY_MOUSE = 0.1f;  // Zoom factor per wheel click (10% per click)
+    constexpr float ZOOM_SENSITIVITY_TRACKPAD = 0.05f;  // Half for smooth trackpad
     constexpr float DOLLY_SENSITIVITY = 0.01f;
     
     constexpr float MIN_ZOOM_DISTANCE = 0.1f;
@@ -200,7 +200,6 @@ void ViewportNavigationHandler::handle_standard_mouse_navigation(const InputEven
             {
                 // Smart mouse surface trackpad = orbit camera (like Blender MOUSEROTATE)
                 Point2D gesture_delta = event.mouse_delta;
-                std::cout << "[NAV] TRACKPAD_ROTATE -> orbit" << std::endl;
                 handle_orbit(event.mouse_pos, gesture_delta);
             }
             break;
@@ -210,7 +209,6 @@ void ViewportNavigationHandler::handle_standard_mouse_navigation(const InputEven
                 // Smart mouse surface + Cmd = zoom (like Blender MOUSEZOOM)
                 Point2D mouse_pos = event.mouse_pos;
                 float zoom_delta = event.mouse_delta.y; // Use Y delta for zoom
-                std::cout << "[NAV] TRACKPAD_ZOOM -> zoom" << std::endl;
                 if (prefs_.zoom_to_mouse) {
                     handle_zoom(zoom_delta, mouse_pos);
                 } else {
@@ -223,7 +221,6 @@ void ViewportNavigationHandler::handle_standard_mouse_navigation(const InputEven
             {
                 // Smart mouse surface + Shift = pan (like Blender MOUSEPAN)
                 Point2D gesture_delta = event.mouse_delta;
-                std::cout << "[NAV] TRACKPAD_PAN -> pan" << std::endl;
                 handle_pan(event.mouse_pos, gesture_delta);
             }
             break;
@@ -409,7 +406,6 @@ void ViewportNavigationHandler::handle_pan(const Point2D& current_pos, const Poi
 void ViewportNavigationHandler::handle_zoom(float zoom_delta, const Point2D& mouse_pos) {
     float zoom_factor = calculate_zoom_factor(zoom_delta);
     
-    std::cout << "[NAV] ZOOM CALLED!" << std::endl;  // KEY DEBUG LINE
     
     if (camera_) {
         NavigationUtils::zoom_camera_towards_point(*camera_, zoom_factor, mouse_pos, viewport_bounds_);

@@ -43,12 +43,10 @@ static void glfw_framebuffer_size_callback(GLFWwindow* window, int width, int he
 }
 
 static void glfw_mouse_button_callback(GLFWwindow* window, int button, int action, int mods) {
-    std::cout << "GLFW mouse button callback: button=" << button << " action=" << action << std::endl;
     CanvasWindow* canvas_window = static_cast<CanvasWindow*>(glfwGetWindowUserPointer(window));
     if (canvas_window) {
         canvas_window->on_mouse_button(button, action, mods);
     } else {
-        std::cout << "ERROR: Canvas window pointer is null!" << std::endl;
     }
 }
 
@@ -347,7 +345,6 @@ void CanvasWindow::on_framebuffer_resize(int width, int height) {
 }
 
 void CanvasWindow::on_mouse_button(int button, int action, int mods) {
-    std::cout << "CanvasWindow::on_mouse_button called: button=" << button << " action=" << action << std::endl;
     
     if (button >= 0 && button < 3) {
         mouse_buttons_[button] = (action == GLFW_PRESS);
@@ -358,7 +355,6 @@ void CanvasWindow::on_mouse_button(int button, int action, int mods) {
     InputEvent event = create_input_event((action == GLFW_PRESS) ? EventType::MOUSE_PRESS : EventType::MOUSE_RELEASE);
     event.mouse_button = static_cast<MouseButton>(button);
     
-    std::cout << "Created input event at (" << event.mouse_pos.x << ", " << event.mouse_pos.y << ")" << std::endl;
     
     // Route to regions first (like reference implementation)
     if (region_manager_) {

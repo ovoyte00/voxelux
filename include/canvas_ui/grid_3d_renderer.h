@@ -38,6 +38,7 @@ public:
     
     // Grid appearance settings
     void set_line_width(float width) { line_width_ = width; }
+    void set_subdivision(float subdiv) { grid_subdivision_ = subdiv; }
     
 private:
     bool load_shaders();
@@ -65,10 +66,12 @@ private:
     GLint u_grid_axis_z_color_ = -1;
     GLint u_line_size_ = -1;
     GLint u_grid_scale_ = -1;
+    GLint u_grid_subdivision_ = -1;
     
     // Grid appearance
-    float line_width_ = 0.5f;
+    float line_width_ = 1.0f;  // Thin lines (1 pixel wide)
     float grid_scale_ = 100.0f;  // Size of the grid plane
+    float grid_subdivision_ = 10.0f;  // Default to powers of 10
     
     bool initialized_ = false;
 };

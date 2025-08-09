@@ -245,33 +245,33 @@ public:
     // No legacy compatibility needed - pure Camera3D system
     
 private:
-    // Core camera state
-    Vector3D position_{0, 0, 10};
+    // Core camera state (defaults for voxel editing)
+    Vector3D position_{30, 30, 30};  // Nice 3/4 view position
     Vector3D target_{0, 0, 0};
     Vector3D up_vector_{0, 1, 0};
     Quaternion rotation_;
     
     // Orbit camera state
     Vector3D orbit_target_{0, 0, 0};
-    float distance_ = 10.0f;
-    float horizontal_angle_ = 0.0f;  // Yaw
-    float vertical_angle_ = 0.0f;    // Pitch
+    float distance_ = 60.0f;  // Default distance to see ~20x20x20 voxel area
+    float horizontal_angle_ = 45.0f * 3.14159f / 180.0f;  // 45° yaw
+    float vertical_angle_ = 30.0f * 3.14159f / 180.0f;    // 30° pitch
     
     // Projection settings
     ProjectionType projection_type_ = ProjectionType::Perspective;
-    float fov_degrees_ = 45.0f;
-    float ortho_size_ = 10.0f;
-    float near_plane_ = 0.1f;
-    float far_plane_ = 1000.0f;
+    float fov_degrees_ = 45.0f;  // Standard FOV for editing
+    float ortho_size_ = 30.0f;   // Orthographic size for ~20 voxel view
+    float near_plane_ = 0.1f;    // Close enough for detailed work
+    float far_plane_ = 10000.0f; // Far enough for large worlds
     float aspect_ratio_ = 16.0f / 9.0f;
     
     // Navigation settings
     NavigationMode navigation_mode_ = NavigationMode::Orbit;
     
-    // Constraints
+    // Constraints (voxel-friendly limits)
     bool orbit_constraints_enabled_ = true;
-    float min_distance_ = 0.1f;
-    float max_distance_ = 100000.0f;  // Allow very far zoom out
+    float min_distance_ = 1.0f;      // Minimum 1 voxel distance
+    float max_distance_ = 100000.0f; // Allow very far zoom for large worlds
     float min_vertical_angle_ = -89.0f;
     float max_vertical_angle_ = 89.0f;
     

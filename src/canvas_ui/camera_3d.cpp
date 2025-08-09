@@ -583,14 +583,29 @@ void Camera3D::look_at(const Vector3D& target, const Vector3D& up) {
 }
 
 void Camera3D::reset_to_default() {
-    position_ = {0, 0, 10};
-    target_ = {0, 0, 0};
+    // Set up camera for voxel editing
+    // To see a 20x20x20 voxel cube taking up ~1/3 of screen:
+    // - Cube extends from -10 to +10 in each axis
+    // - Camera should be at a distance where the cube subtends ~1/3 of the FOV
+    // - For 45° FOV, to see 20 units at 1/3 screen, distance ≈ 60 units
+    
+    // Position camera at 45° angle for better 3D perception
+    distance_ = 60.0f;  // Distance to comfortably see 20x20x20 cube
+    horizontal_angle_ = 45.0f * DEG_TO_RAD;  // 45 degree viewing angle
+    vertical_angle_ = 30.0f * DEG_TO_RAD;  // 30 degree elevation
+    
+    // Set orbit target at origin
     orbit_target_ = {0, 0, 0};
+    target_ = orbit_target_;
+    
+    // Calculate position from orbit parameters
+    position_ = CameraUtils::calculate_orbit_position(orbit_target_, distance_, horizontal_angle_, vertical_angle_);
+    
     up_vector_ = {0, 1, 0};
-    rotation_ = Quaternion::identity();
-    distance_ = 10.0f;
-    horizontal_angle_ = 0.0f;
-    vertical_angle_ = 0.0f;
+    
+    // Update rotation to look at target
+    Vector3D forward = (target_ - position_).normalized();
+    rotation_ = Quaternion::look_rotation(forward, up_vector_);
     
     fov_degrees_ = 45.0f;
     ortho_size_ = 10.0f;

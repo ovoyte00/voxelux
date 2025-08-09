@@ -85,8 +85,8 @@ struct CanvasTheme {
     ColorRGBA border_normal{"#555555"};        // Panel borders
     
     // Grid colors (loaded from assets/styles/colors.json)
-    ColorRGBA grid_major_lines{"#4D4D4D"};     // Major grid lines
-    ColorRGBA grid_minor_lines{"#333333"};     // Minor grid lines
+    ColorRGBA grid_major_lines{"#5a5a5a"};     // Major grid lines - clearly visible (90, 90, 90)
+    ColorRGBA grid_minor_lines{"#3a3a3a"};     // Minor grid lines - subtle but visible (58, 58, 58)
     ColorRGBA grid_origin{"#FFFFFF"};          // Origin highlight
     ColorRGBA axis_x_color{"#BC4252"};         // X-axis red
     ColorRGBA axis_y_color{"#6CAC34"};         // Y-axis green

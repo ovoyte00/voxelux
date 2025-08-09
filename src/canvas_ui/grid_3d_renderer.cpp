@@ -25,26 +25,21 @@ Grid3DRenderer::~Grid3DRenderer() {
 
 bool Grid3DRenderer::initialize() {
     if (initialized_) {
-        std::cout << "Grid renderer already initialized" << std::endl;
         return true;
     }
     
-    std::cout << "Initializing grid renderer..." << std::endl;
     
     if (!load_shaders()) {
         std::cerr << "ERROR: Failed to load grid shaders" << std::endl;
         return false;
     }
-    std::cout << "Grid shaders loaded successfully" << std::endl;
     
     if (!create_grid_geometry()) {
         std::cerr << "ERROR: Failed to create grid geometry" << std::endl;
         return false;
     }
-    std::cout << "Grid geometry created successfully" << std::endl;
     
     initialized_ = true;
-    std::cout << "Grid renderer initialization complete" << std::endl;
     return true;
 }
 
@@ -58,7 +53,6 @@ void Grid3DRenderer::shutdown() {
 }
 
 bool Grid3DRenderer::load_shaders() {
-    std::cout << "Loading grid shaders from shaders/grid/" << std::endl;
     
     // Load vertex shader - try multiple possible paths
     std::vector<std::string> vertex_paths = {
@@ -75,7 +69,6 @@ bool Grid3DRenderer::load_shaders() {
         vertex_file.open(path);
         if (vertex_file.is_open()) {
             used_path = path;
-            std::cout << "Found vertex shader at: " << path << std::endl;
             break;
         }
     }
@@ -87,7 +80,6 @@ bool Grid3DRenderer::load_shaders() {
         }
         return false;
     }
-    std::cout << "Vertex shader file opened successfully" << std::endl;
     
     std::stringstream vertex_stream;
     vertex_stream << vertex_file.rdbuf();
@@ -107,7 +99,6 @@ bool Grid3DRenderer::load_shaders() {
     for (const auto& path : fragment_paths) {
         fragment_file.open(path);
         if (fragment_file.is_open()) {
-            std::cout << "Found fragment shader at: " << path << std::endl;
             break;
         }
     }
@@ -119,7 +110,6 @@ bool Grid3DRenderer::load_shaders() {
         }
         return false;
     }
-    std::cout << "Fragment shader file opened successfully" << std::endl;
     
     std::stringstream fragment_stream;
     fragment_stream << fragment_file.rdbuf();
@@ -179,6 +169,7 @@ bool Grid3DRenderer::load_shaders() {
     u_grid_axis_z_color_ = glGetUniformLocation(shader_program_, "grid_axis_z_color");
     u_line_size_ = glGetUniformLocation(shader_program_, "line_size");
     u_grid_scale_ = glGetUniformLocation(shader_program_, "grid_scale");
+    u_grid_subdivision_ = glGetUniformLocation(shader_program_, "grid_subdivision");
     
     return true;
 }
@@ -233,7 +224,6 @@ bool Grid3DRenderer::create_grid_geometry() {
 
 void Grid3DRenderer::render(const Camera3D& camera, const Rect2D& viewport, const CanvasTheme& theme) {
     if (!initialized_) {
-        std::cout << "ERROR: Grid renderer not initialized" << std::endl;
         return;
     }
     
@@ -261,13 +251,6 @@ void Grid3DRenderer::render(const Camera3D& camera, const Rect2D& viewport, cons
     Matrix4x4 view_matrix = camera.get_view_matrix();
     Matrix4x4 projection_matrix = camera.get_projection_matrix();
     
-    // Debug: Print camera position to verify it's correct
-    Vector3D cam_pos = camera.get_position();
-    static int frame_count = 0;
-    if (frame_count++ % 60 == 0) {  // Print every 60 frames
-        std::cout << "Camera: pos(" << cam_pos.x << "," << cam_pos.y << "," << cam_pos.z 
-                  << ") dist=" << camera.get_distance() << std::endl;
-    }
     
     // Create model matrix for grid scaling
     Matrix4x4 model_matrix = Matrix4x4::scale({dynamic_grid_size/grid_scale_, 1.0f, dynamic_grid_size/grid_scale_});
@@ -291,7 +274,7 @@ void Grid3DRenderer::render(const Camera3D& camera, const Rect2D& viewport, cons
         glUniform4f(u_grid_color_, theme.grid_minor_lines.r, theme.grid_minor_lines.g, theme.grid_minor_lines.b, theme.grid_minor_lines.a);
     }
     if (u_grid_major_color_ != -1) {
-        glUniform4f(u_grid_major_color_, theme.grid_major_lines.r, theme.grid_major_lines.g, theme.grid_major_lines.b, 1.0f);
+        glUniform4f(u_grid_major_color_, theme.grid_major_lines.r, theme.grid_major_lines.g, theme.grid_major_lines.b, theme.grid_major_lines.a);
     }
     if (u_grid_axis_x_color_ != -1) {
         glUniform4f(u_grid_axis_x_color_, theme.axis_x_color.r, theme.axis_x_color.g, theme.axis_x_color.b, 1.0f);
@@ -304,6 +287,9 @@ void Grid3DRenderer::render(const Camera3D& camera, const Rect2D& viewport, cons
     }
     if (u_grid_scale_ != -1) {
         glUniform1f(u_grid_scale_, grid_scale_);
+    }
+    if (u_grid_subdivision_ != -1) {
+        glUniform1f(u_grid_subdivision_, grid_subdivision_);
     }
     
     // Render grid

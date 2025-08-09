@@ -285,10 +285,6 @@ void CanvasRegion::render_splitter_handles(CanvasRenderer* renderer) {
 }
 
 bool CanvasRegion::handle_event(const InputEvent& event) {
-    // Debug: Only log clicks, not mouse movement
-    if (event.type == EventType::MOUSE_PRESS) {
-        std::cout << "CanvasRegion received mouse click at (" << event.mouse_pos.x << ", " << event.mouse_pos.y << ")" << std::endl;
-    }
     
     // If this is a split region, route to children
     if (is_split()) {

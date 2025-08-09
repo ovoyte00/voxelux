@@ -44,10 +44,6 @@ EventResult EventRouter::route_event(const InputEvent& event) {
     
     processing_event_ = true;
     
-    // Debug: Log event routing
-    if (event.is_mouse_event()) {
-        std::cout << "EventRouter routing mouse event" << std::endl;
-    }
     
     // Apply event filters first
     for (const auto& filter : event_filters_) {

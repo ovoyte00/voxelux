@@ -36,15 +36,10 @@ Viewport3DEditor::Viewport3DEditor()
     , frame_time_(0.0f)
     , frame_count_(0) {
     
-    // Initialize professional Camera3D system - 3/4 view angle for better visibility
+    // Camera is already initialized with good defaults in Camera3D constructor
+    // which calls reset_to_default() to set up proper voxel editing view
+    // Just ensure we're in orbit mode
     camera_.set_navigation_mode(Camera3D::NavigationMode::Orbit);
-    camera_.set_distance(20.0f); // Medium distance for good overview
-    camera_.set_orbit_target({0, 0, 0});
-    camera_.rotate_around_target(45.0f * DEG_TO_RAD, 30.0f * DEG_TO_RAD); // 3/4 view angle
-    camera_.set_projection_type(Camera3D::ProjectionType::Perspective);
-    camera_.set_field_of_view(45.0f);
-    camera_.set_near_plane(0.1f);
-    camera_.set_far_plane(100000.0f); // Large far plane for grid visibility
     
 }
 
@@ -117,10 +112,8 @@ bool Viewport3DEditor::handle_event(const InputEvent& event, const Rect2D& bound
 }
 
 void Viewport3DEditor::reset_camera_view() {
-    camera_.set_distance(15.0f);
-    camera_.set_orbit_target({0, 0, 0});
-    camera_.rotate_around_target(45.0f * DEG_TO_RAD, 25.0f * DEG_TO_RAD);
-    camera_.set_projection_type(Camera3D::ProjectionType::Perspective);
+    // Use the camera's built-in reset which properly sets up for voxel editing
+    camera_.reset_to_default();
 }
 
 void Viewport3DEditor::frame_all_objects() {
