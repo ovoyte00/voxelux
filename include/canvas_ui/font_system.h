@@ -104,6 +104,10 @@ public:
     // Access to FreeType library (for FontFace)
     FT_Library get_ft_library() const { return ft_library_; }
     
+    // Texture atlas management
+    bool try_add_to_atlas(GlyphInfo& glyph, const unsigned char* bitmap_data, 
+                         int width, int height);
+    
 private:
     FT_Library ft_library_ = nullptr;
     std::unordered_map<std::string, std::unique_ptr<FontFace>> fonts_;
@@ -122,10 +126,29 @@ private:
     
     // Shader for text rendering
     unsigned int text_shader_program_ = 0;
+    unsigned int projection_uniform_ = 0;
+    unsigned int text_color_uniform_ = 0;
+    unsigned int texture_uniform_ = 0;
+    
+    // VAO/VBO for batch rendering
+    unsigned int text_vao_ = 0;
+    unsigned int text_vbo_ = 0;
+    
+    // Batch rendering data
+    struct GlyphVertex {
+        float x, y;      // Position
+        float u, v;      // Texture coordinates
+    };
+    std::vector<GlyphVertex> vertex_batch_;
+    static constexpr size_t MAX_BATCH_SIZE = 1000; // Max glyphs per batch
     
     void create_text_shader();
+    void setup_render_buffers();
+    void create_texture_atlas();
     void render_glyph(CanvasRenderer* renderer, const GlyphInfo& glyph, 
                      const Point2D& position, const ColorRGBA& color);
+    void flush_batch(CanvasRenderer* renderer, unsigned int texture_id, const ColorRGBA& color);
+    void add_glyph_to_batch(const GlyphInfo& glyph, const Point2D& position);
 };
 
 // Global font system instance

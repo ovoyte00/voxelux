@@ -113,6 +113,9 @@ public:
     // Statistics
     int get_draw_calls_this_frame() const { return draw_calls_this_frame_; }
     int get_vertices_this_frame() const { return vertices_this_frame_; }
+    
+    // Matrix access for text rendering
+    void get_projection_matrix(float* matrix) const;
 
 private:
     // Shader and resource management

@@ -308,6 +308,25 @@ Point2D CanvasRenderer::get_viewport_size() const {
     return Point2D(static_cast<float>(viewport_width_), static_cast<float>(viewport_height_));
 }
 
+void CanvasRenderer::get_projection_matrix(float* matrix) const {
+    if (!matrix) return;
+    
+    // Create orthographic projection matrix for 2D rendering
+    // Maps screen coordinates to NDC (-1 to 1)
+    float width = static_cast<float>(viewport_width_);
+    float height = static_cast<float>(viewport_height_);
+    
+    // Prevent division by zero
+    if (width <= 0) width = 1.0f;
+    if (height <= 0) height = 1.0f;
+    
+    // Column-major order for OpenGL
+    matrix[0] = 2.0f / width;   matrix[4] = 0.0f;           matrix[8] = 0.0f;  matrix[12] = -1.0f;
+    matrix[1] = 0.0f;            matrix[5] = -2.0f / height; matrix[9] = 0.0f;  matrix[13] = 1.0f;
+    matrix[2] = 0.0f;            matrix[6] = 0.0f;           matrix[10] = -1.0f; matrix[14] = 0.0f;
+    matrix[3] = 0.0f;            matrix[7] = 0.0f;           matrix[11] = 0.0f;  matrix[15] = 1.0f;
+}
+
 void CanvasRenderer::draw_rect(const Rect2D& rect, const ColorRGBA& color) {
     // **Canvas UI Professional Immediate Mode Rendering** (inspired by Blender's GPU immediate mode)
     // Always render - no debug limits, no frame-based restrictions

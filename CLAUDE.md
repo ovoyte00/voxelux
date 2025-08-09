@@ -9,7 +9,7 @@ Voxelux is a state-of-the-art professional voxel 3D editor with a sleek, modern 
 ### Key Technologies
 - **Language**: C++20
 - **Build System**: CMake (minimum version 3.20)
-- **Graphics**: OpenGL/Vulkan rendering pipeline
+- **Graphics**: Custom OpenGL rendering pipeline with proprietary framework
 - **Architecture**: Event-driven system with planned plugin support
 - **Monetization**: Subscription-based model
 
@@ -72,7 +72,7 @@ The project follows a modular C++ architecture:
 
 ## Custom UI System
 
-Voxelux features a custom-developed Canvas UI framework that follows Blender's multi-use modular system architecture. In this design, every region can be any use type - allowing users to configure their workspace with any combination of viewports, panels, and editors. This provides maximum flexibility for professional workflows where users can adapt the interface to their specific needs.
+Voxelux features a completely custom-developed Canvas UI framework built from the ground up with our own proprietary rendering and layout system. Inspired by Blender's multi-use modular architecture, our custom framework allows every region to be any use type - enabling users to configure their workspace with any combination of viewports, panels, and editors. This custom approach gives us complete control over performance optimization, rendering pipeline, and user interaction patterns, providing maximum flexibility for professional workflows where users can adapt the interface to their specific needs.
 
 ## Blender Reference Implementation
 
@@ -161,8 +161,8 @@ This creates a professional voxel editing platform with both developer ecosystem
 - Event-driven architecture for performance and scalability (upgradeable from SimpleEvent to robust system)
 - Modular plugin system for specialized use cases
 - Professional Plugin API with paid developer access
-- Modern, sleek UI/UX with professional aesthetic
-- Advanced rendering pipeline with real-time lighting
+- Completely custom UI/UX framework with proprietary rendering system
+- Custom OpenGL rendering pipeline with real-time lighting (no external graphics APIs)
 - Animation system for previews and cinematic content
 - Cross-platform deployment (Windows, macOS, Linux)
 - **Multi-tier monetization**: Individual subscriptions + Team/Enterprise plans + Plugin API licensing
