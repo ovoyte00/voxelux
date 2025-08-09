@@ -251,6 +251,10 @@ private:
     Vector3D up_vector_{0, 1, 0};
     Quaternion rotation_;
     
+    // Blender-style view quaternion for turntable mode
+    Quaternion view_quat_;  // Primary state: view orientation
+    bool use_turntable_ = true;  // Use Blender's turntable rotation
+    
     // Orbit camera state
     Vector3D orbit_target_{0, 0, 0};
     float distance_ = 60.0f;  // Default distance to see ~20x20x20 voxel area
@@ -290,6 +294,7 @@ private:
     // Helper methods
     void update_position_from_orbit();
     void update_orbit_from_position();
+    void update_position_from_view_quat();  // Blender-style position update
     void apply_orbit_constraints();
     void mark_view_dirty() const { view_matrix_dirty_ = true; }
     void mark_projection_dirty() const { projection_matrix_dirty_ = true; }

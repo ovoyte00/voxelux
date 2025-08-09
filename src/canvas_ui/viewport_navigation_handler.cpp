@@ -25,10 +25,12 @@ namespace {
     
     // Professional viewport navigation sensitivity values
     // Calibrated to match industry-standard 3D applications
-    constexpr float ORBIT_SENSITIVITY_DEGREES = 0.4f;  // degrees per pixel
-    constexpr float ORBIT_SENSITIVITY_MOUSE = ORBIT_SENSITIVITY_DEGREES * DEG_TO_RAD;  // ~0.007 radians
-    constexpr float ORBIT_SENSITIVITY_TRACKPAD = ORBIT_SENSITIVITY_MOUSE * 0.5f;  // Half for trackpad
-    constexpr float PAN_SENSITIVITY_MOUSE = 0.002f;  // Viewport units per pixel (industry standard)
+    // TODO: Get UI_SCALE_FACTOR from system DPI settings
+    constexpr float UI_SCALE_FACTOR = 0.3f;  // Will be replaced with actual DPI scaling
+    constexpr float ORBIT_SENSITIVITY_DEGREES = 0.4f;  // Blender's base value
+    constexpr float ORBIT_SENSITIVITY_MOUSE = (ORBIT_SENSITIVITY_DEGREES * DEG_TO_RAD) / UI_SCALE_FACTOR;
+    constexpr float ORBIT_SENSITIVITY_TRACKPAD = ORBIT_SENSITIVITY_MOUSE;  // Same as mouse
+    constexpr float PAN_SENSITIVITY_MOUSE = 0.002f / UI_SCALE_FACTOR;  // Apply UI scaling to pan
     constexpr float PAN_SENSITIVITY_TRACKPAD = PAN_SENSITIVITY_MOUSE * 0.5f;  // Half for trackpad
     constexpr float ZOOM_SENSITIVITY_MOUSE = 0.1f;  // Zoom factor per wheel click (10% per click)
     constexpr float ZOOM_SENSITIVITY_TRACKPAD = 0.05f;  // Half for smooth trackpad
