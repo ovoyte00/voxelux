@@ -246,19 +246,20 @@ public:
     
 private:
     // Core camera state (defaults for voxel editing)
-    Vector3D position_{30, 30, 30};  // Nice 3/4 view position
+    // Initialize to safe defaults to avoid undefined behavior
+    Vector3D position_{0, 0, 0};
     Vector3D target_{0, 0, 0};
     Vector3D up_vector_{0, 1, 0};
     Quaternion rotation_;
     
     // Blender-style view quaternion for turntable mode
-    Quaternion view_quat_;  // Primary state: view orientation
+    Quaternion view_quat_ = Quaternion::identity();  // Start with identity
     bool use_turntable_ = true;  // Use Blender's turntable rotation
     
     // Orbit camera state
     Vector3D orbit_target_{0, 0, 0};
     float distance_ = 60.0f;  // Default distance to see ~20x20x20 voxel area
-    float horizontal_angle_ = 45.0f * 3.14159f / 180.0f;  // 45° yaw
+    float horizontal_angle_ = -45.0f * 3.14159f / 180.0f;  // -45° yaw (matches reset_to_default)
     float vertical_angle_ = 30.0f * 3.14159f / 180.0f;    // 30° pitch
     
     // Projection settings

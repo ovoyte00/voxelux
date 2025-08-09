@@ -480,6 +480,9 @@ void Camera3D::set_aspect_ratio(float aspect) {
 }
 
 void Camera3D::set_navigation_mode(NavigationMode mode) {
+    if (navigation_mode_ == mode) {
+        return; // Already in this mode, don't update
+    }
     navigation_mode_ = mode;
     if (mode == NavigationMode::Orbit) {
         update_orbit_from_position();
@@ -506,10 +509,11 @@ Matrix4x4 Camera3D::get_view_projection_matrix() const {
 
 void Camera3D::orbit_horizontal(float angle_radians) {
     if (navigation_mode_ == NavigationMode::Orbit && use_turntable_) {
-        // Blender's turntable: rotate around global Z (Y in our coord system)
+        // Blender's turntable: rotate around global Y axis (up)
+        // This is exactly how Blender does it - global rotation first
         Quaternion quat_global_y = Quaternion::from_axis_angle(Vector3D(0, 1, 0), angle_radians);
         
-        // Apply to view quaternion (order matters!)
+        // Pre-multiply for global rotation (rotate the camera in world space)
         view_quat_ = quat_global_y * view_quat_;
         view_quat_ = view_quat_.normalized();
         
@@ -525,14 +529,17 @@ void Camera3D::orbit_horizontal(float angle_radians) {
 
 void Camera3D::orbit_vertical(float angle_radians) {
     if (navigation_mode_ == NavigationMode::Orbit && use_turntable_) {
-        // Blender's turntable: rotate around local X (right vector)
-        // Get the camera's right vector in world space
+        // Blender's turntable: rotate around the camera's local X axis (right vector)
+        // This matches Blender's view3d_navigate_view_rotate.cc line 267
+        
+        // Get the camera's right vector from the current view quaternion
+        // In view space, right is +X
         Vector3D right = view_quat_.rotate_vector(Vector3D(1, 0, 0));
         
-        // Create rotation quaternion around this world-space axis
+        // Create rotation around this axis
         Quaternion quat_local_x = Quaternion::from_axis_angle(right, angle_radians);
         
-        // Apply rotation (pre-multiply for world-space rotation)
+        // Pre-multiply to apply in world space (exactly like Blender)
         view_quat_ = quat_local_x * view_quat_;
         view_quat_ = view_quat_.normalized();
         
@@ -613,20 +620,33 @@ void Camera3D::reset_to_default() {
     target_ = orbit_target_;
     up_vector_ = {0, 1, 0};
     
-    // Position camera at 45° angle for better 3D perception
+    // Set distance for viewing
     distance_ = 60.0f;  // Distance to comfortably see 20x20x20 cube
-    horizontal_angle_ = 45.0f * DEG_TO_RAD;  // 45 degree viewing angle
-    vertical_angle_ = 30.0f * DEG_TO_RAD;  // 30 degree elevation
     
-    // Calculate position from orbit parameters
-    position_ = CameraUtils::calculate_orbit_position(orbit_target_, distance_, horizontal_angle_, vertical_angle_);
+    // Build view quaternion purely from rotations (Blender turntable style)
+    // NO look_rotation, just axis-angle rotations
+    view_quat_ = Quaternion::identity();
     
-    // Set up rotation quaternion to look at target
-    Vector3D forward = (target_ - position_).normalized();
-    rotation_ = Quaternion::look_rotation(forward, up_vector_);
+    // First: horizontal rotation around world Y (45 degrees to the right)
+    Quaternion y_rot = Quaternion::from_axis_angle(Vector3D(0, 1, 0), -45.0f * DEG_TO_RAD);
+    view_quat_ = y_rot * view_quat_;
     
-    // Initialize view quaternion for turntable mode
-    view_quat_ = rotation_;
+    // Second: vertical rotation around local X (30 degrees looking down)
+    Vector3D right = view_quat_.rotate_vector(Vector3D(1, 0, 0));
+    Quaternion x_rot = Quaternion::from_axis_angle(right, -30.0f * DEG_TO_RAD);
+    view_quat_ = x_rot * view_quat_;
+    
+    view_quat_ = view_quat_.normalized();
+    
+    // Also set the spherical angles to match
+    horizontal_angle_ = -45.0f * DEG_TO_RAD;
+    vertical_angle_ = 30.0f * DEG_TO_RAD;
+    
+    // Derive position from view quaternion
+    update_position_from_view_quat();
+    
+    // Set rotation to match view quaternion
+    rotation_ = view_quat_;
     
     fov_degrees_ = 45.0f;
     ortho_size_ = 10.0f;
@@ -676,21 +696,35 @@ void Camera3D::update_orbit_from_position() {
     CameraUtils::cartesian_to_spherical(to_camera, distance_, horizontal_angle_, vertical_angle_);
     vertical_angle_ = PI * 0.5f - vertical_angle_; // Convert to elevation angle
     
-    // Also update view quaternion to match current state
+    // For turntable mode, build quaternion from scratch without look_rotation
     if (use_turntable_) {
-        Vector3D forward = (target_ - position_).normalized();
-        view_quat_ = Quaternion::look_rotation(forward, up_vector_);
+        // Build the view quaternion purely from rotations (no look_rotation)
+        view_quat_ = Quaternion::identity();
+        
+        // First apply the horizontal rotation (around world Y)
+        Quaternion y_rot = Quaternion::from_axis_angle(Vector3D(0, 1, 0), horizontal_angle_);
+        view_quat_ = y_rot * view_quat_;
+        
+        // Then apply the vertical rotation (around local X)
+        Vector3D right = view_quat_.rotate_vector(Vector3D(1, 0, 0));
+        Quaternion x_rot = Quaternion::from_axis_angle(right, -vertical_angle_);
+        view_quat_ = x_rot * view_quat_;
+        
+        view_quat_ = view_quat_.normalized();
     }
 }
 
 void Camera3D::update_position_from_view_quat() {
     // Blender-style: derive position from view quaternion
-    // In Blender, the view looks forward along +Z in view space (into the screen)
-    // We need to map this to our world space correctly
-    Vector3D view_backward = view_quat_.rotate_vector(Vector3D(0, 0, 1)); // Camera looks backward from its position
+    // The view quaternion represents the camera's orientation
+    // The camera looks down its local -Z axis (forward in OpenGL)
     
-    // Position is orbit_target plus the backward direction scaled by distance
-    position_ = orbit_target_ + view_backward * distance_;
+    // Get the view direction (camera looks down -Z in its local space)
+    Vector3D view_forward = view_quat_.rotate_vector(Vector3D(0, 0, -1));
+    
+    // Position is orbit_target minus the forward direction scaled by distance
+    // (camera is behind where it's looking)
+    position_ = orbit_target_ - view_forward * distance_;
     
     // Update the rotation to match the view quaternion
     rotation_ = view_quat_;
@@ -709,10 +743,16 @@ void Camera3D::apply_orbit_constraints() {
 void Camera3D::update_cached_matrices() const {
     if (view_matrix_dirty_) {
         if (use_turntable_ && navigation_mode_ == NavigationMode::Orbit) {
-            // Use quaternion-based view matrix for turntable mode
-            // This avoids issues with look_at at the poles
+            // Build view matrix directly from quaternion (Blender's approach)
+            // The view matrix transforms from world to camera space
+            
+            // Rotation part: conjugate of view quaternion to invert the rotation
             Matrix4x4 rot_matrix = Matrix4x4::rotation(view_quat_.conjugate());
+            
+            // Translation part: negative position in world space
             Matrix4x4 trans_matrix = Matrix4x4::translation(Vector3D(-position_.x, -position_.y, -position_.z));
+            
+            // Combine: first translate, then rotate (standard view matrix order)
             cached_view_matrix_ = rot_matrix * trans_matrix;
         } else {
             cached_view_matrix_ = Matrix4x4::look_at(position_, target_, up_vector_);

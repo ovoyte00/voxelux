@@ -134,13 +134,14 @@ void main() {
     // Mix in coarsest scale (always major color)
     out_color = mix(out_color, grid_major_color, gridC);
     
-    // Axis lines
-    if (abs(P.z) < fwidthPos.z * 2.0) {
+    // Axis lines - make them more visible with a larger threshold
+    float axis_threshold = max(2.0, line_size * 2.0);
+    if (abs(P.z) < fwidthPos.z * axis_threshold) {
         // X-axis (red)
         float x_axis = 1.0 - LINE_STEP(abs(P.z) / fwidthPos.z - line_size);
         out_color = mix(out_color, grid_axis_x_color, x_axis);
     }
-    if (abs(P.x) < fwidthPos.x * 2.0) {
+    if (abs(P.x) < fwidthPos.x * axis_threshold) {
         // Z-axis (blue)  
         float z_axis = 1.0 - LINE_STEP(abs(P.x) / fwidthPos.x - line_size);
         out_color = mix(out_color, grid_axis_z_color, z_axis);
