@@ -36,6 +36,7 @@ struct NativeScrollEvent {
     bool is_momentum;         // Momentum/inertia scrolling
     bool is_precise;          // Precise/pixel-perfect scrolling
     bool is_inverted;         // Natural/inverted scrolling
+    bool is_pinch;            // This is a pinch/magnification gesture
     
     // Timing
     double timestamp;
@@ -45,6 +46,7 @@ struct NativeScrollEvent {
         , delta_x(0), delta_y(0)
         , has_phase(false), is_momentum(false)
         , is_precise(false), is_inverted(false)
+        , is_pinch(false)
         , timestamp(0) {}
 };
 

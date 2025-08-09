@@ -12,6 +12,7 @@
 #include "canvas_ui/camera_3d.h"
 #include <cstring>
 #include <algorithm>
+#include <iostream>
 
 namespace voxel_canvas {
 
@@ -570,7 +571,13 @@ void Camera3D::pan(const Vector3D& delta) {
 void Camera3D::zoom(float factor) {
     if (projection_type_ == ProjectionType::Perspective) {
         if (navigation_mode_ == NavigationMode::Orbit) {
+            std::cout << "[Camera] Zoom in orbit mode: factor=" << factor 
+                      << " old_distance=" << distance_ 
+                      << " new_distance=" << (distance_ * factor) << std::endl;
+            std::cout << "[Camera] Old position: " << position_.x << ", " << position_.y << ", " << position_.z << std::endl;
+            std::cout << "[Camera] Target: " << orbit_target_.x << ", " << orbit_target_.y << ", " << orbit_target_.z << std::endl;
             set_distance(distance_ * factor);
+            std::cout << "[Camera] New position: " << position_.x << ", " << position_.y << ", " << position_.z << std::endl;
         } else {
             Vector3D forward = get_forward_vector();
             position_ += forward * (distance_ * (1.0f - factor));
@@ -661,33 +668,39 @@ void Camera3D::reset_to_default() {
 // Legacy sync methods removed - using pure Camera3D system
 
 void Camera3D::update_position_from_orbit() {
-    // Calculate position using spherical coordinates
-    // This naturally handles rotation past the poles
-    position_ = CameraUtils::calculate_orbit_position(orbit_target_, distance_, horizontal_angle_, vertical_angle_);
-    
-    // Calculate forward vector
-    Vector3D forward = (orbit_target_ - position_).normalized();
-    
-    // For continuous rotation, we need a consistent right vector
-    // Use world up crossed with forward, unless we're looking straight up/down
-    Vector3D world_up = {0, 1, 0};
-    Vector3D right;
-    
-    if (std::abs(forward.y) > 0.999f) {
-        // Looking straight up or down, use a different approach
-        right = Vector3D(1, 0, 0);
+    if (use_turntable_) {
+        // In turntable mode, position is derived from view quaternion
+        // This preserves the exact camera orientation during zoom
+        update_position_from_view_quat();
     } else {
-        right = world_up.cross(forward).normalized();
+        // Calculate position using spherical coordinates
+        // This naturally handles rotation past the poles
+        position_ = CameraUtils::calculate_orbit_position(orbit_target_, distance_, horizontal_angle_, vertical_angle_);
+        
+        // Calculate forward vector
+        Vector3D forward = (orbit_target_ - position_).normalized();
+        
+        // For continuous rotation, we need a consistent right vector
+        // Use world up crossed with forward, unless we're looking straight up/down
+        Vector3D world_up = {0, 1, 0};
+        Vector3D right;
+        
+        if (std::abs(forward.y) > 0.999f) {
+            // Looking straight up or down, use a different approach
+            right = Vector3D(1, 0, 0);
+        } else {
+            right = world_up.cross(forward).normalized();
+        }
+        
+        // Calculate actual up from right and forward
+        Vector3D up = forward.cross(right).normalized();
+        
+        // Build rotation matrix manually
+        // This allows the view to naturally invert when going upside down
+        rotation_ = Quaternion::look_rotation(forward, up);
+        
+        target_ = orbit_target_;
     }
-    
-    // Calculate actual up from right and forward
-    Vector3D up = forward.cross(right).normalized();
-    
-    // Build rotation matrix manually
-    // This allows the view to naturally invert when going upside down
-    rotation_ = Quaternion::look_rotation(forward, up);
-    
-    target_ = orbit_target_;
 }
 
 void Camera3D::update_orbit_from_position() {

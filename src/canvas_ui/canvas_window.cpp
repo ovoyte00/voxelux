@@ -215,6 +215,33 @@ void CanvasWindow::swap_buffers() {
 void CanvasWindow::poll_events() {
     glfwPollEvents();
     
+    // Process any pending native events (like pinch gestures)
+    // These don't come through GLFW callbacks
+    voxelux::platform::NativeScrollEvent native_event;
+    while (voxelux::platform::NativeInput::get_next_scroll_event(native_event)) {
+        if (native_event.is_pinch) {
+            // Process pinch gesture directly
+            float pinch_delta = static_cast<float>(native_event.delta_y);
+            std::cout << "[Canvas] Processing pinch from poll, delta=" << pinch_delta << std::endl;
+            
+            InputEvent event = create_input_event(EventType::TRACKPAD_ZOOM);
+            event.wheel_delta = pinch_delta;
+            event.mouse_delta = Point2D(0, pinch_delta);
+            
+            // Route through normal event system
+            if (region_manager_) {
+                if (region_manager_->handle_event(event)) {
+                    continue; // Event was handled
+                }
+            }
+            
+            if (event_router_) {
+                event_router_->route_event(event);
+            }
+        }
+        // Other native events are handled by GLFW scroll callback
+    }
+    
     // Process deferred events from event router
     if (event_router_) {
         event_router_->process_deferred_events();
@@ -452,6 +479,31 @@ void CanvasWindow::on_mouse_scroll(double x_offset, double y_offset) {
         is_smart_device = (native_event.device_type == voxelux::platform::ScrollDeviceType::SmartMouse ||
                           native_event.device_type == voxelux::platform::ScrollDeviceType::Trackpad);
         
+        // Check if this is a pinch gesture
+        if (native_event.is_pinch) {
+            // For pinch gestures, the zoom delta is in native_event.delta_y (scaled magnification)
+            float pinch_delta = static_cast<float>(native_event.delta_y);
+            std::cout << "[Canvas] Handling pinch as TRACKPAD_ZOOM, pinch_delta=" << pinch_delta << std::endl;
+            // Handle pinch gesture for zoom
+            InputEvent event = create_input_event(EventType::TRACKPAD_ZOOM);
+            event.wheel_delta = pinch_delta;  // Use the magnification delta
+            event.mouse_delta = Point2D(0, pinch_delta);
+            
+            // Route through normal event system
+            if (region_manager_) {
+                if (region_manager_->handle_event(event)) {
+                    std::cout << "[Canvas] Event handled by region_manager" << std::endl;
+                    return; // Event was handled by regions
+                }
+            }
+            
+            if (event_router_) {
+                std::cout << "[Canvas] Routing event through event_router" << std::endl;
+                event_router_->route_event(event);
+            }
+            return; // Skip normal scroll handling
+        }
+        
         // Debug output shows native detection
         const char* device_name = "Unknown";
         switch (native_event.device_type) {
@@ -509,8 +561,11 @@ void CanvasWindow::on_mouse_scroll(double x_offset, double y_offset) {
     // Add trackpad-specific data for all smart device events
     if (is_smart_device) {
         event.trackpad.direction_inverted = natural_scroll_direction_;
-        // Store both X and Y deltas for trackpad gestures
-        event.mouse_delta = Point2D(static_cast<float>(x_offset), static_cast<float>(y_offset));
+        // Store both X and Y deltas for trackpad gestures EXCEPT zoom
+        // Zoom should only use wheel_delta, not mouse_delta
+        if (event_type != EventType::TRACKPAD_ZOOM) {
+            event.mouse_delta = Point2D(static_cast<float>(x_offset), static_cast<float>(y_offset));
+        }
     }
     
     // Event created with appropriate type and deltas

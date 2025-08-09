@@ -15,10 +15,12 @@
 // macOS-specific scroll interceptor - must be outside namespace
 @interface VoxeluxScrollInterceptor : NSObject {
     id eventMonitor;
+    id magnificationMonitor;
 }
 - (void)startMonitoring;
 - (void)stopMonitoring;
 - (void)handleScrollEvent:(NSEvent*)event;
+- (void)handleMagnificationEvent:(NSEvent*)event;
 @end
 
 // Need forward declaration for friend access
@@ -39,6 +41,12 @@ class NativeInput;
             return event; // Still pass to GLFW
         }];
     
+    // Also monitor magnification (pinch) gestures
+    magnificationMonitor = [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskMagnify
+        handler:^NSEvent*(NSEvent* event) {
+            [self handleMagnificationEvent:event];
+            return event; // Still pass to GLFW
+        }];
 }
 
 - (void)stopMonitoring {
@@ -46,11 +54,16 @@ class NativeInput;
         [NSEvent removeMonitor:eventMonitor];
         eventMonitor = nil;
     }
+    if (magnificationMonitor) {
+        [NSEvent removeMonitor:magnificationMonitor];
+        magnificationMonitor = nil;
+    }
 }
 
 - (void)handleScrollEvent:(NSEvent*)event {
     voxelux::platform::NativeScrollEvent native_event;
     native_event.timestamp = event.timestamp;
+    native_event.is_pinch = false; // Regular scroll, not pinch
     
     // Detect device type based on NSEvent properties
     NSEventPhase phase = event.phase;
@@ -111,6 +124,34 @@ class NativeInput;
         // Use the public interface to add event
         voxelux::platform::NativeInput::add_scroll_event(native_event);
     }
+}
+
+- (void)handleMagnificationEvent:(NSEvent*)event {
+    // Create a special scroll event for magnification gestures
+    voxelux::platform::NativeScrollEvent native_event;
+    native_event.timestamp = event.timestamp;
+    native_event.device_type = voxelux::platform::ScrollDeviceType::Trackpad;
+    native_event.has_phase = true;
+    native_event.is_momentum = false;
+    native_event.is_precise = true;
+    native_event.is_inverted = false;
+    
+    // For magnification, use the magnification value as the delta
+    // Positive magnification = zoom in, negative = zoom out
+    // Scale the magnification to match expected scroll delta ranges
+    float magnification = event.magnification;
+    native_event.delta_x = 0;
+    native_event.delta_y = magnification * 10.0f; // Scale factor for zoom sensitivity
+    
+    // Set a special flag to indicate this is a pinch gesture
+    native_event.is_pinch = true;
+    
+    // Debug output
+    std::cout << "[Native] Trackpad magnification=" << magnification 
+              << " scaled_delta=" << native_event.delta_y << std::endl;
+    
+    // Add to queue
+    voxelux::platform::NativeInput::add_scroll_event(native_event);
 }
 
 - (void)dealloc {

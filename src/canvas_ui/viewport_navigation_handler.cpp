@@ -209,8 +209,11 @@ void ViewportNavigationHandler::handle_standard_mouse_navigation(const InputEven
         case EventType::TRACKPAD_ZOOM:
             {
                 // Smart mouse surface + Cmd = zoom (like Blender MOUSEZOOM)
+                // Also handles pinch gestures
                 Point2D mouse_pos = event.mouse_pos;
-                float zoom_delta = event.mouse_delta.y; // Use Y delta for zoom
+                // Use wheel_delta which is set for both CMD+scroll and pinch
+                float zoom_delta = event.wheel_delta;
+                std::cout << "[ViewportNav] TRACKPAD_ZOOM received, zoom_delta=" << zoom_delta << std::endl;
                 if (prefs_.zoom_to_mouse) {
                     handle_zoom(zoom_delta, mouse_pos);
                 } else {
@@ -406,11 +409,26 @@ void ViewportNavigationHandler::handle_pan(const Point2D& current_pos, const Poi
 }
 
 void ViewportNavigationHandler::handle_zoom(float zoom_delta, const Point2D& mouse_pos) {
-    float zoom_factor = calculate_zoom_factor(zoom_delta);
+    float zoom_factor;
     
+    // For pinch gestures, use the delta directly as a scale factor
+    // For scroll wheel, use fixed steps
+    if (std::abs(zoom_delta) < 1.0f) {
+        // Small values indicate pinch gesture (magnification values)
+        // Convert to zoom factor: positive = zoom in, negative = zoom out
+        zoom_factor = 1.0f - zoom_delta * 0.1f;  // Scale the magnification appropriately
+        std::cout << "[ViewportNav] Pinch zoom: delta=" << zoom_delta << " factor=" << zoom_factor << std::endl;
+    } else {
+        // Large values indicate scroll wheel
+        zoom_factor = calculate_zoom_factor(zoom_delta);
+        std::cout << "[ViewportNav] Wheel zoom: delta=" << zoom_delta << " factor=" << zoom_factor << std::endl;
+    }
     
     if (camera_) {
+        float old_distance = camera_->get_distance();
         NavigationUtils::zoom_camera_towards_point(*camera_, zoom_factor, mouse_pos, viewport_bounds_);
+        float new_distance = camera_->get_distance();
+        std::cout << "[ViewportNav] Camera distance: " << old_distance << " -> " << new_distance << std::endl;
     }
     
     needs_camera_update_ = true;
