@@ -74,15 +74,41 @@ The project follows a modular C++ architecture:
 
 Voxelux features a completely custom-developed Canvas UI framework built from the ground up with our own proprietary rendering and layout system. Inspired by Blender's multi-use modular architecture, our custom framework allows every region to be any use type - enabling users to configure their workspace with any combination of viewports, panels, and editors. This custom approach gives us complete control over performance optimization, rendering pipeline, and user interaction patterns, providing maximum flexibility for professional workflows where users can adapt the interface to their specific needs.
 
-## Blender Reference Implementation
+## Blender Reference Implementation - Clean-Room Approach
 
-**IMPORTANT**: This project has a reference implementation available at `./lib/blender/` for studying 3D navigation and UI patterns. When implementing viewport controls, UI patterns, or 3D navigation features, reference this implementation for architectural guidance.
+**IMPORTANT**: This project has a reference implementation available at `./lib/blender/` for studying 3D navigation and UI patterns. When implementing viewport controls, UI patterns, or 3D navigation features, follow the clean-room development process below.
 
-**CRITICAL LICENSING REQUIREMENT**: When referencing the source code:
-- NEVER use function names, variable names, or comments from the reference code
-- NEVER mention the reference project name in code comments or identifiers  
-- Study patterns and algorithms, then write completely original implementations
-- All code must be license-violation-proof and completely independent
+### Clean-Room Development Process (MANDATORY)
+
+When referencing Blender or any GPL-licensed code, you MUST follow this strict three-phase approach:
+
+#### Phase 1: Read and Study
+- Study the Blender implementation to understand concepts, algorithms, and approaches
+- Focus on understanding the mathematical concepts and high-level logic
+- Create a detailed report documenting the concepts WITHOUT using any original text, variable names, or function names
+- Document the problem being solved and the approach taken
+- Identify key mathematical formulas and transformations
+
+#### Phase 2: Research Industry Standards
+- Research industry-standard approaches to solve the same problems
+- Look for MIT-licensed or public domain implementations for reference
+- Study academic papers, tutorials, and documentation about the concepts
+- Compare different approaches and understand trade-offs
+- Document alternative solutions and why certain approaches are preferred
+
+#### Phase 3: Original Implementation
+- Implement the solution using completely original code
+- Use different variable names, function names, and code structure
+- Apply the understood concepts but express them in your own way
+- Add your own optimizations and improvements
+- Ensure the implementation is license-violation-proof and completely independent
+
+**This clean-room approach ensures**:
+- We learn from proven solutions
+- We avoid any licensing violations
+- Our code is completely original and defensible
+- We understand the "why" behind implementations, not just the "how"
+- We can improve upon existing solutions
 
 ### Key Blender Reference Files:
 - **Viewport Navigation**: `/lib/blender/source/blender/editors/space_view3d/view3d_navigate.cc`

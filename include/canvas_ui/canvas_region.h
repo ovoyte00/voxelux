@@ -113,7 +113,7 @@ public:
     void update_layout();
     void set_split_ratio(float ratio);
     
-    // Canvas UI Professional Invalidation System (original implementation inspired by Blender)
+    // Canvas UI Professional Invalidation System (original implementation)
     void mark_content_changed() { 
         if (!is_currently_drawing()) {
             invalidation_flags_ = invalidation_flags_ | RegionUpdateFlags::CONTENT_CHANGED; 
@@ -146,7 +146,7 @@ public:
         }
     }
     
-    // Blender-style continuous rendering for visible UI
+    // Professional continuous rendering for visible UI
     void ensure_visible() { 
         if (invalidation_flags_ == RegionUpdateFlags::NONE) {
             invalidation_flags_ = RegionUpdateFlags::CONTENT_CHANGED;
@@ -157,7 +157,7 @@ public:
     bool has_flag(RegionUpdateFlags flag) const { return (invalidation_flags_ & flag) != RegionUpdateFlags::NONE; }
     void clear_update_flags() { invalidation_flags_ = RegionUpdateFlags::NONE; }
     
-    // Canvas UI Drawing Safety System (inspired by Blender's RGN_DRAWING)
+    // Canvas UI Drawing Safety System (professional UI framework)
     bool is_currently_drawing() const { return has_flag(RegionUpdateFlags::ANIMATION_ACTIVE); }
     float get_split_ratio() const { return split_ratio_; }
     

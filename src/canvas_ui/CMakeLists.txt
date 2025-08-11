@@ -19,7 +19,10 @@ add_library(voxelux_canvas_ui
     ui_widgets.cpp
     viewport_3d_editor.cpp
     viewport_navigation_handler.cpp
+    viewport_navigator.cpp
+    navigation_widget.cpp
     camera_3d.cpp
+    polyline_shader.cpp
     ../glad/glad.c  # GLAD OpenGL loader
 )
 

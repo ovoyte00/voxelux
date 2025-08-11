@@ -1,6 +1,6 @@
 #version 410 core
 
-// Vertex shader for infinite 3D grid (inspired by Blender's approach)
+// Vertex shader for infinite 3D grid with procedural generation
 // Generates a full-screen quad that will procedurally generate the grid in fragment shader
 
 layout (location = 0) in vec3 position;

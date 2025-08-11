@@ -510,8 +510,8 @@ Matrix4x4 Camera3D::get_view_projection_matrix() const {
 
 void Camera3D::orbit_horizontal(float angle_radians) {
     if (navigation_mode_ == NavigationMode::Orbit && use_turntable_) {
-        // Blender's turntable: rotate around global Y axis (up)
-        // This is exactly how Blender does it - global rotation first
+        // Turntable mode: rotate around global Y axis (up)
+        // Global rotation is applied first for professional 3D navigation
         Quaternion quat_global_y = Quaternion::from_axis_angle(Vector3D(0, 1, 0), angle_radians);
         
         // Pre-multiply for global rotation (rotate the camera in world space)
@@ -530,8 +530,8 @@ void Camera3D::orbit_horizontal(float angle_radians) {
 
 void Camera3D::orbit_vertical(float angle_radians) {
     if (navigation_mode_ == NavigationMode::Orbit && use_turntable_) {
-        // Blender's turntable: rotate around the camera's local X axis (right vector)
-        // This matches Blender's view3d_navigate_view_rotate.cc line 267
+        // Turntable mode: rotate around the camera's local X axis (right vector)
+        // Local rotation for vertical movement
         
         // Get the camera's right vector from the current view quaternion
         // In view space, right is +X
@@ -540,7 +540,7 @@ void Camera3D::orbit_vertical(float angle_radians) {
         // Create rotation around this axis
         Quaternion quat_local_x = Quaternion::from_axis_angle(right, angle_radians);
         
-        // Pre-multiply to apply in world space (exactly like Blender)
+        // Pre-multiply to apply in world space for proper rotation order
         view_quat_ = quat_local_x * view_quat_;
         view_quat_ = view_quat_.normalized();
         
@@ -571,13 +571,13 @@ void Camera3D::pan(const Vector3D& delta) {
 void Camera3D::zoom(float factor) {
     if (projection_type_ == ProjectionType::Perspective) {
         if (navigation_mode_ == NavigationMode::Orbit) {
-            std::cout << "[Camera] Zoom in orbit mode: factor=" << factor 
-                      << " old_distance=" << distance_ 
-                      << " new_distance=" << (distance_ * factor) << std::endl;
-            std::cout << "[Camera] Old position: " << position_.x << ", " << position_.y << ", " << position_.z << std::endl;
-            std::cout << "[Camera] Target: " << orbit_target_.x << ", " << orbit_target_.y << ", " << orbit_target_.z << std::endl;
+            // std::cout << "[Camera] Zoom in orbit mode: factor=" << factor 
+            //           << " old_distance=" << distance_ 
+            //           << " new_distance=" << (distance_ * factor) << std::endl;
+            // std::cout << "[Camera] Old position: " << position_.x << ", " << position_.y << ", " << position_.z << std::endl;
+            // std::cout << "[Camera] Target: " << orbit_target_.x << ", " << orbit_target_.y << ", " << orbit_target_.z << std::endl;
             set_distance(distance_ * factor);
-            std::cout << "[Camera] New position: " << position_.x << ", " << position_.y << ", " << position_.z << std::endl;
+            // std::cout << "[Camera] New position: " << position_.x << ", " << position_.y << ", " << position_.z << std::endl;
         } else {
             Vector3D forward = get_forward_vector();
             position_ += forward * (distance_ * (1.0f - factor));
@@ -595,7 +595,7 @@ void Camera3D::dolly(float distance) {
 }
 
 void Camera3D::rotate_around_target(float horizontal_angle, float vertical_angle) {
-    // Apply rotations separately to match Blender's turntable behavior
+    // Apply rotations separately for turntable navigation
     orbit_horizontal(horizontal_angle);
     orbit_vertical(vertical_angle);
 }
@@ -616,26 +616,27 @@ void Camera3D::look_at(const Vector3D& target, const Vector3D& up) {
 }
 
 void Camera3D::reset_to_default() {
-    // Set up camera for voxel editing
-    // To see a 20x20x20 voxel cube taking up ~1/3 of screen:
-    // - Cube extends from -10 to +10 in each axis
-    // - Camera should be at a distance where the cube subtends ~1/3 of the FOV
-    // - For 45° FOV, to see 20 units at 1/3 screen, distance ≈ 60 units
+    // Set up camera for voxel editing with right-handed coordinate system:
+    // +Y pointing up (vertical)
+    // +X pointing right
+    // +Z pointing towards viewer (out of screen)
+    // This means camera looks from positive Z towards negative Z (into the scene)
     
     // Set orbit target at origin
     orbit_target_ = {0, 0, 0};
     target_ = orbit_target_;
-    up_vector_ = {0, 1, 0};
+    up_vector_ = {0, 1, 0};  // Y is up
     
     // Set distance for viewing
     distance_ = 60.0f;  // Distance to comfortably see 20x20x20 cube
     
-    // Build view quaternion purely from rotations (Blender turntable style)
-    // NO look_rotation, just axis-angle rotations
+    // Build view quaternion for initial 3/4 view
+    // Looking from front-right-above (positive X, positive Y, positive Z quadrant)
     view_quat_ = Quaternion::identity();
     
-    // First: horizontal rotation around world Y (45 degrees to the right)
-    Quaternion y_rot = Quaternion::from_axis_angle(Vector3D(0, 1, 0), -45.0f * DEG_TO_RAD);
+    // First: horizontal rotation around world Y (45 degrees to the left to see from front-right)
+    // Negative angle rotates camera to the left (counter-clockwise from top view)
+    Quaternion y_rot = Quaternion::from_axis_angle(Vector3D(0, 1, 0), 45.0f * DEG_TO_RAD);
     view_quat_ = y_rot * view_quat_;
     
     // Second: vertical rotation around local X (30 degrees looking down)
@@ -646,7 +647,7 @@ void Camera3D::reset_to_default() {
     view_quat_ = view_quat_.normalized();
     
     // Also set the spherical angles to match
-    horizontal_angle_ = -45.0f * DEG_TO_RAD;
+    horizontal_angle_ = 45.0f * DEG_TO_RAD;
     vertical_angle_ = 30.0f * DEG_TO_RAD;
     
     // Derive position from view quaternion
@@ -728,7 +729,7 @@ void Camera3D::update_orbit_from_position() {
 }
 
 void Camera3D::update_position_from_view_quat() {
-    // Blender-style: derive position from view quaternion
+    // Turntable mode: derive position from view quaternion
     // The view quaternion represents the camera's orientation
     // The camera looks down its local -Z axis (forward in OpenGL)
     
@@ -750,13 +751,13 @@ void Camera3D::apply_orbit_constraints() {
     if (!orbit_constraints_enabled_) return;
     
     distance_ = std::max(min_distance_, std::min(max_distance_, distance_));
-    // Don't constrain vertical angle - allow full rotation like Blender
+    // Don't constrain vertical angle - allow full rotation
 }
 
 void Camera3D::update_cached_matrices() const {
     if (view_matrix_dirty_) {
         if (use_turntable_ && navigation_mode_ == NavigationMode::Orbit) {
-            // Build view matrix directly from quaternion (Blender's approach)
+            // Build view matrix directly from quaternion for turntable mode
             // The view matrix transforms from world to camera space
             
             // Rotation part: conjugate of view quaternion to invert the rotation

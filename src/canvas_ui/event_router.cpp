@@ -55,13 +55,8 @@ EventResult EventRouter::route_event(const InputEvent& event) {
     
     EventResult result = EventResult::IGNORED;
     
-    // First try to route to regions directly (like reference implementation)
-    if (window_ && event.is_mouse_event()) {
-        // Get region manager from window and route events
-        // This matches the reference implementation pattern where regions get first priority
-        std::cout << "Attempting direct region routing..." << std::endl;
-        // TODO: Need to access region manager from window to route events properly
-    }
+    // Region routing is handled by CanvasWindow before events reach the EventRouter
+    // So we don't need to route to regions here
     
     // Check modal handlers first (they capture all input)
     if (!modal_stack_.empty()) {
@@ -316,7 +311,7 @@ void EventRouter::log_event(const InputEvent& event, const std::string& handler_
         case EventResult::PASS_THROUGH: result_name = "PASS_THROUGH"; break;
     }
     
-    std::cout << "[EventRouter] " << type_name << " -> " << handler_name << " -> " << result_name << std::endl;
+    // std::cout << "[EventRouter] " << type_name << " -> " << handler_name << " -> " << result_name << std::endl;
 }
 
 // GlobalShortcutHandler implementation

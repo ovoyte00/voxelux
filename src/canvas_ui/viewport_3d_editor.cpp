@@ -72,6 +72,11 @@ void Viewport3DEditor::update(float delta_time) {
 }
 
 void Viewport3DEditor::render(CanvasRenderer* renderer, const Rect2D& bounds) {
+    // Update navigation handler with current UI scale
+    if (nav_handler_) {
+        nav_handler_->set_ui_scale(renderer->get_content_scale());
+    }
+    
     // Clear the viewport with theme background color
     ColorRGBA bg_color = renderer->get_theme().background_primary;
     renderer->draw_rect(bounds, bg_color);
@@ -87,6 +92,11 @@ void Viewport3DEditor::render(CanvasRenderer* renderer, const Rect2D& bounds) {
 
 void Viewport3DEditor::render_overlay(CanvasRenderer* renderer, const Rect2D& bounds) {
     // Professional overlay rendering - UI elements on top of 3D content
+    
+    // Render navigation widget if visible
+    if (nav_widget_visible_ && nav_widget_) {
+        nav_widget_->render(renderer, camera_, bounds);
+    }
     
     // Render debug info if enabled
     if (show_fps_) {
@@ -107,6 +117,22 @@ void Viewport3DEditor::render_overlay(CanvasRenderer* renderer, const Rect2D& bo
 }
 
 bool Viewport3DEditor::handle_event(const InputEvent& event, const Rect2D& bounds) {
+    // Check navigation widget interaction first
+    if (nav_widget_visible_ && nav_widget_) {
+        if (event.type == EventType::MOUSE_MOVE) {
+            // Update hover state
+            int hovered = nav_widget_->hit_test(event.mouse_pos);
+            nav_widget_->set_hover_axis(hovered);
+        } else if (event.type == EventType::MOUSE_PRESS && event.mouse_button == MouseButton::LEFT) {
+            // Check for widget click
+            int clicked = nav_widget_->hit_test(event.mouse_pos);
+            if (clicked >= 0) {
+                nav_widget_->handle_click(clicked);
+                return true; // Consume event
+            }
+        }
+    }
+    
     // Handle professional camera navigation directly
     return handle_camera_navigation(event, bounds);
 }
@@ -183,6 +209,35 @@ void Viewport3DEditor::setup_nav_widget() {
     prefs.trackpad_zoom_gesture = true;    // Pinch to zoom
     prefs.trackpad_rotate_gesture = true;  // Two-finger rotate
     nav_handler_->set_preferences(prefs);
+    
+    // Create navigation widget for viewport orientation
+    nav_widget_ = std::make_unique<NavigationWidget>();
+    if (!nav_widget_->initialize()) {
+        std::cerr << "Failed to initialize navigation widget" << std::endl;
+        nav_widget_.reset();
+    } else {
+        // Set up axis click callback
+        nav_widget_->set_axis_click_callback([this](int axis, bool positive) {
+            // Handle axis clicks to set standard orthographic views
+            // Using right-handed coordinate system: +Y up, +X right, +Z towards viewer
+            camera_.set_projection_type(Camera3D::ProjectionType::Orthographic);
+            float view_distance = 60.0f;
+            
+            if (axis == 0) { // X axis - Right/Left view
+                // Looking along X axis
+                camera_.set_position(Vector3D(positive ? view_distance : -view_distance, 0, 0));
+                camera_.look_at(Vector3D(0, 0, 0), Vector3D(0, 1, 0)); // Y is up
+            } else if (axis == 1) { // Y axis - Top/Bottom view  
+                // Looking along Y axis
+                camera_.set_position(Vector3D(0, positive ? view_distance : -view_distance, 0));
+                camera_.look_at(Vector3D(0, 0, 0), Vector3D(0, 0, positive ? -1 : 1)); // Z forward when looking down
+            } else if (axis == 2) { // Z axis - Front/Back view
+                // Looking along Z axis
+                camera_.set_position(Vector3D(0, 0, positive ? view_distance : -view_distance));
+                camera_.look_at(Vector3D(0, 0, 0), Vector3D(0, 1, 0)); // Y is up
+            }
+        });
+    }
 }
 
 void Viewport3DEditor::render_3d_scene(CanvasRenderer* renderer, const Rect2D& bounds) {

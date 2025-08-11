@@ -75,7 +75,7 @@ struct ColorRGBA {
 
 // Professional theme for voxel editing
 struct CanvasTheme {
-    // Base colors (Blender-inspired but original)
+    // Base colors (industry-standard professional theme)
     ColorRGBA background_primary{"#2b2b2b"};   // Main background
     ColorRGBA background_secondary{"#323232"}; // Headers, panels
     ColorRGBA accent_selection{"#5680c2"};     // Selection highlight  
@@ -121,7 +121,8 @@ enum class EventType {
     TRACKPAD_PAN,
     TRACKPAD_ZOOM,
     TRACKPAD_ROTATE,
-    SMART_MOUSE_GESTURE
+    SMART_MOUSE_GESTURE,
+    MODIFIER_CHANGE  // Special event for when modifier keys change
 };
 
 enum class MouseButton {

@@ -13,13 +13,19 @@
 #include "canvas_ui/canvas_renderer.h"
 #include "canvas_ui/canvas_window.h"
 #include "canvas_ui/font_system.h"
+#include "canvas_ui/polyline_shader.h"
 #include <iostream>
 #include <fstream>
 #include <sstream>
+#include <cmath>
+
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
 
 namespace voxel_canvas {
 
-// OpenGL error checking helper (Blender-style)
+// OpenGL error checking helper for debugging
 static void check_gl_error(const std::string& operation) {
     GLenum error = glGetError();
     if (error != GL_NO_ERROR) {
@@ -133,9 +139,9 @@ bool CanvasRenderer::initialize() {
     glGetIntegerv(GL_FRAMEBUFFER_BINDING, reinterpret_cast<GLint*>(&default_fbo_));
     current_fbo_ = default_fbo_;
 
-    // Enhanced OpenGL state setup (Blender-style)
+    // Enhanced OpenGL state setup for professional rendering
     
-    // Critical pixel store setup (from Blender)
+    // Critical pixel store setup for texture alignment
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
     glPixelStorei(GL_PACK_ALIGNMENT, 1);
     check_gl_error("pixel store setup");
@@ -169,6 +175,13 @@ bool CanvasRenderer::initialize() {
     if (!font_system_->initialize()) {
         std::cerr << "Failed to initialize font system" << std::endl;
         return false;
+    }
+    
+    // Initialize polyline shader for thick line rendering
+    polyline_shader_ = std::make_unique<PolylineShader>();
+    if (!polyline_shader_->initialize()) {
+        std::cerr << "Failed to initialize polyline shader" << std::endl;
+        // Non-fatal, fall back to regular line rendering
     }
     
     // Load default fonts (Inter)
@@ -242,7 +255,7 @@ void CanvasRenderer::begin_frame() {
     
     // **Canvas UI Professional Background System** - Now using proper theme colors
     // UI rendering is confirmed working, switch to production colors
-    ColorRGBA bg = theme_.background_primary; // Professional dark background like Blender
+    ColorRGBA bg = theme_.background_primary; // Professional dark background
     glClearColor(bg.r, bg.g, bg.b, bg.a);
     check_gl_error("clear color");
     
@@ -253,9 +266,9 @@ void CanvasRenderer::begin_frame() {
 
 void CanvasRenderer::end_frame() {
     // Using immediate mode rendering for now - more reliable than batching
-    // Will implement proper batching system later based on Blender's approach
+    // Will implement proper batching system later for performance
     
-    // CRITICAL: Reset OpenGL state after UI rendering (Blender pattern)
+    // CRITICAL: Reset OpenGL state after UI rendering
     glDisable(GL_SCISSOR_TEST);
     check_gl_error("disable scissor test");
     
@@ -327,8 +340,15 @@ void CanvasRenderer::get_projection_matrix(float* matrix) const {
     matrix[3] = 0.0f;            matrix[7] = 0.0f;           matrix[11] = 0.0f;  matrix[15] = 1.0f;
 }
 
+float CanvasRenderer::get_content_scale() const {
+    if (window_) {
+        return window_->get_content_scale();
+    }
+    return 1.0f;
+}
+
 void CanvasRenderer::draw_rect(const Rect2D& rect, const ColorRGBA& color) {
-    // **Canvas UI Professional Immediate Mode Rendering** (inspired by Blender's GPU immediate mode)
+    // **Canvas UI Professional Immediate Mode Rendering**
     // Always render - no debug limits, no frame-based restrictions
     
     // Validate shader state first (critical for continuous rendering)
@@ -338,7 +358,7 @@ void CanvasRenderer::draw_rect(const Rect2D& rect, const ColorRGBA& color) {
     }
     
     
-    // **Blender-Style Immediate Mode**: Create geometry and render immediately
+    // **Immediate Mode**: Create geometry and render immediately
     // No batching, no state tracking, just direct OpenGL calls
     
     UIVertex vertices[4] = {
@@ -350,9 +370,21 @@ void CanvasRenderer::draw_rect(const Rect2D& rect, const ColorRGBA& color) {
     
     uint32_t indices[6] = {0, 1, 2, 0, 2, 3};
     
-    // **OpenGL State Setup** - Fresh state every call like Blender
-    glBindTexture(GL_TEXTURE_2D, white_texture_);
-    check_gl_error("bind texture");
+    // **OpenGL State Setup** - Fresh state every call
+    if (white_texture_ == 0 || !glIsTexture(white_texture_)) {
+        // Try to recreate the texture if it's invalid
+        GLubyte white_pixel[4] = {255, 255, 255, 255};
+        glGenTextures(1, &white_texture_);
+        glBindTexture(GL_TEXTURE_2D, white_texture_);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 1, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, white_pixel);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    } else {
+        glBindTexture(GL_TEXTURE_2D, white_texture_);
+    }
+    
+    // Clear any previous GL errors before checking
+    while (glGetError() != GL_NO_ERROR) {}
     
     ui_shader_->use();
     check_gl_error("use shader");
@@ -381,7 +413,7 @@ void CanvasRenderer::draw_rect(const Rect2D& rect, const ColorRGBA& color) {
     ui_shader_->set_uniform("u_texture", 0);
     check_gl_error("set SDF uniforms");
     
-    // **Buffer Operations** - Upload fresh data every call like Blender's immediate mode
+    // **Buffer Operations** - Upload fresh data every call for immediate mode
     glBindVertexArray(ui_vao_);
     check_gl_error("bind VAO");
     
@@ -407,7 +439,7 @@ void CanvasRenderer::draw_rect(const Rect2D& rect, const ColorRGBA& color) {
     check_gl_error("flush after draw");
     
     
-    // **Cleanup** - Reset state like Blender's immediate mode
+    // **Cleanup** - Reset state for immediate mode
     ui_shader_->unuse();
     check_gl_error("unuse shader");
     
@@ -427,7 +459,34 @@ void CanvasRenderer::draw_rect_outline(const Rect2D& rect, const ColorRGBA& colo
 }
 
 void CanvasRenderer::draw_line(const Point2D& start, const Point2D& end, const ColorRGBA& color, float width) {
-    // Immediate mode line rendering (like draw_rect)
+    // Use polyline shader if available and line is thick
+    if (polyline_shader_ && polyline_shader_->is_valid() && width > 1.0f) {
+        polyline_shader_->use();
+        
+        // Set uniforms
+        float projection[16];
+        get_projection_matrix(projection);
+        polyline_shader_->set_projection(projection);
+        polyline_shader_->set_viewport_size(viewport_width_, viewport_height_);
+        polyline_shader_->set_line_width(width);
+        polyline_shader_->set_line_smooth(true);  // Enable anti-aliasing
+        
+        // Enable blending for smooth edges
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        
+        // Draw the line
+        polyline_shader_->draw_line(start.x, start.y, end.x, end.y, 
+                                   color.r, color.g, color.b, color.a);
+        
+        polyline_shader_->unuse();
+        
+        draw_calls_this_frame_++;
+        vertices_this_frame_ += 2;
+        return;
+    }
+    
+    // Fallback to quad-based approach if polyline shader not available
     if (!ui_shader_ || !ui_shader_->is_valid()) {
         return;
     }
@@ -442,12 +501,12 @@ void CanvasRenderer::draw_line(const Point2D& start, const Point2D& end, const C
     
     Point2D normal(-dir.y * width * 0.5f, dir.x * width * 0.5f);
     
-    // Create quad vertices for the line
+    // Create quad vertices for the line - using proper winding order
     UIVertex vertices[4] = {
-        UIVertex(start.x + normal.x, start.y + normal.y, 0, 0, color.r, color.g, color.b, color.a),
-        UIVertex(end.x + normal.x, end.y + normal.y, 1, 0, color.r, color.g, color.b, color.a),
-        UIVertex(end.x - normal.x, end.y - normal.y, 1, 1, color.r, color.g, color.b, color.a),
-        UIVertex(start.x - normal.x, start.y - normal.y, 0, 1, color.r, color.g, color.b, color.a)
+        UIVertex(start.x - normal.x, start.y - normal.y, 0, 0, color.r, color.g, color.b, color.a),
+        UIVertex(end.x - normal.x, end.y - normal.y, 1, 0, color.r, color.g, color.b, color.a),
+        UIVertex(end.x + normal.x, end.y + normal.y, 1, 1, color.r, color.g, color.b, color.a),
+        UIVertex(start.x + normal.x, start.y + normal.y, 0, 1, color.r, color.g, color.b, color.a)
     };
     
     uint32_t indices[6] = {0, 1, 2, 0, 2, 3};
@@ -474,7 +533,26 @@ void CanvasRenderer::draw_line(const Point2D& start, const Point2D& end, const C
     ui_shader_->set_uniform("u_aa_radius", 1.0f);
     ui_shader_->set_uniform("u_texture", 0);
     
-    glBindTexture(GL_TEXTURE_2D, white_texture_);
+    // Ensure texture is valid before binding
+    if (white_texture_ == 0 || !glIsTexture(white_texture_)) {
+        // Recreate texture if invalid
+        GLubyte white_pixel[4] = {255, 255, 255, 255};
+        glGenTextures(1, &white_texture_);
+        glBindTexture(GL_TEXTURE_2D, white_texture_);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 1, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, white_pixel);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    } else {
+        glBindTexture(GL_TEXTURE_2D, white_texture_);
+    }
+    
+    // Enable blending for transparency
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    
+    // Disable face culling for lines
+    glDisable(GL_CULL_FACE);
+    
     glBindVertexArray(ui_vao_);
     
     glBindBuffer(GL_ARRAY_BUFFER, ui_vbo_);
@@ -484,20 +562,218 @@ void CanvasRenderer::draw_line(const Point2D& start, const Point2D& end, const C
     glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STREAM_DRAW);
     
     glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
-    glFlush();
     
     ui_shader_->unuse();
     glBindVertexArray(0);
+    
+    // Force GPU to execute commands
+    glFlush();
     
     draw_calls_this_frame_++;
     vertices_this_frame_ += 4;
 }
 
 void CanvasRenderer::draw_circle(const Point2D& center, float radius, const ColorRGBA& color, int segments) {
-    // TODO: Implement circle rendering
-    // For now, draw a square
-    Rect2D rect(center.x - radius, center.y - radius, radius * 2, radius * 2);
-    draw_rect(rect, color);
+    if (!ui_shader_ || !ui_shader_->is_valid()) {
+        std::cerr << "ERROR: UI shader not valid for circle!" << std::endl;
+        return;
+    }
+    
+    
+    // Generate circle vertices using triangle fan
+    // Format: position(2) + texcoord(2) + color(4) = 8 floats per vertex
+    std::vector<float> vertices;
+    vertices.reserve((segments + 2) * 8); // 8 floats per vertex
+    
+    // Center vertex
+    vertices.push_back(center.x);      // position x
+    vertices.push_back(center.y);      // position y
+    vertices.push_back(0.5f);          // texcoord u (center)
+    vertices.push_back(0.5f);          // texcoord v (center)
+    vertices.push_back(color.r);       // color r
+    vertices.push_back(color.g);       // color g
+    vertices.push_back(color.b);       // color b
+    vertices.push_back(color.a);       // color a
+    
+    // Generate perimeter vertices
+    for (int i = 0; i <= segments; i++) {
+        float angle = 2.0f * M_PI * float(i) / float(segments);
+        float x = center.x + radius * std::cos(angle);
+        float y = center.y + radius * std::sin(angle);
+        float u = 0.5f + 0.5f * std::cos(angle);
+        float v = 0.5f + 0.5f * std::sin(angle);
+        
+        vertices.push_back(x);          // position x
+        vertices.push_back(y);          // position y
+        vertices.push_back(u);          // texcoord u
+        vertices.push_back(v);          // texcoord v
+        vertices.push_back(color.r);    // color r
+        vertices.push_back(color.g);    // color g
+        vertices.push_back(color.b);    // color b
+        vertices.push_back(color.a);    // color a
+    }
+    
+    // Use shader
+    ui_shader_->use();
+    
+    // Set uniforms
+    GLint proj_loc = glGetUniformLocation(ui_shader_->get_id(), "u_projection");
+    if (proj_loc >= 0) {
+        float proj_matrix[16];
+        get_projection_matrix(proj_matrix);
+        glUniformMatrix4fv(proj_loc, 1, GL_FALSE, proj_matrix);
+    }
+    
+    // Bind white texture (shader expects a texture even if we're using vertex colors)
+    GLint tex_loc = glGetUniformLocation(ui_shader_->get_id(), "u_texture");
+    if (tex_loc >= 0) {
+        glUniform1i(tex_loc, 0);
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, white_texture_);
+    }
+    
+    // Set widget rect uniform (disable rounded corners for circles)
+    GLint rect_loc = glGetUniformLocation(ui_shader_->get_id(), "u_widget_rect");
+    if (rect_loc >= 0) {
+        glUniform4f(rect_loc, 0, 0, 10000, 10000); // Large rect to disable corner rounding
+    }
+    
+    // Set corner radius to 0 (we're drawing a circle, not a rounded rect)
+    GLint corner_loc = glGetUniformLocation(ui_shader_->get_id(), "u_corner_radius");
+    if (corner_loc >= 0) {
+        glUniform4f(corner_loc, 0, 0, 0, 0);
+    }
+    
+    // Set border width to 0
+    GLint border_loc = glGetUniformLocation(ui_shader_->get_id(), "u_border_width");
+    if (border_loc >= 0) {
+        glUniform1f(border_loc, 0);
+    }
+    
+    // Create temporary VAO/VBO for circle
+    GLuint circle_vao, circle_vbo;
+    glGenVertexArrays(1, &circle_vao);
+    glGenBuffers(1, &circle_vbo);
+    
+    glBindVertexArray(circle_vao);
+    glBindBuffer(GL_ARRAY_BUFFER, circle_vbo);
+    glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(float), vertices.data(), GL_STREAM_DRAW);
+    
+    // Setup vertex attributes matching the shader layout
+    // Layout: position(2) + texcoord(2) + color(4) = 8 floats per vertex
+    glEnableVertexAttribArray(0); // position
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)0);
+    glEnableVertexAttribArray(1); // texcoord
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(2 * sizeof(float)));
+    glEnableVertexAttribArray(2); // color
+    glVertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(4 * sizeof(float)));
+    
+    // Enable blending for transparency
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    
+    // Draw circle as triangle fan
+    glDrawArrays(GL_TRIANGLE_FAN, 0, segments + 2);
+    
+    // Cleanup
+    glBindVertexArray(0);
+    glDeleteVertexArrays(1, &circle_vao);
+    glDeleteBuffers(1, &circle_vbo);
+    
+    glUseProgram(0);
+}
+
+void CanvasRenderer::draw_circle_ring(const Point2D& center, float radius, const ColorRGBA& color, float thickness, int segments) {
+    // Draw ring (hollow circle) using triangle strip
+    if (!ui_shader_ || !ui_shader_->is_valid()) {
+        return;
+    }
+    
+    // Format: position(2) + texcoord(2) + color(4) = 8 floats per vertex
+    std::vector<float> vertices;
+    vertices.reserve((segments + 1) * 2 * 8); // Two vertices per segment (inner and outer)
+    
+    float inner_radius = radius - thickness;
+    
+    for (int i = 0; i <= segments; i++) {
+        float angle = 2.0f * 3.14159265f * i / segments;
+        float cos_a = std::cos(angle);
+        float sin_a = std::sin(angle);
+        
+        // Outer vertex
+        float outer_x = center.x + radius * cos_a;
+        float outer_y = center.y + radius * sin_a;
+        vertices.push_back(outer_x);        // position x
+        vertices.push_back(outer_y);        // position y
+        vertices.push_back(0.5f + 0.5f * cos_a);  // texcoord u
+        vertices.push_back(0.5f + 0.5f * sin_a);  // texcoord v
+        vertices.push_back(color.r);        // color r
+        vertices.push_back(color.g);        // color g
+        vertices.push_back(color.b);        // color b
+        vertices.push_back(color.a);        // color a
+        
+        // Inner vertex
+        float inner_x = center.x + inner_radius * cos_a;
+        float inner_y = center.y + inner_radius * sin_a;
+        vertices.push_back(inner_x);        // position x
+        vertices.push_back(inner_y);        // position y
+        vertices.push_back(0.5f + 0.4f * cos_a);  // texcoord u (slightly inset)
+        vertices.push_back(0.5f + 0.4f * sin_a);  // texcoord v (slightly inset)
+        vertices.push_back(color.r);        // color r
+        vertices.push_back(color.g);        // color g
+        vertices.push_back(color.b);        // color b
+        vertices.push_back(color.a);        // color a
+    }
+    
+    // Create temporary VAO and VBO for the ring
+    GLuint ring_vao, ring_vbo;
+    glGenVertexArrays(1, &ring_vao);
+    glGenBuffers(1, &ring_vbo);
+    
+    glBindVertexArray(ring_vao);
+    glBindBuffer(GL_ARRAY_BUFFER, ring_vbo);
+    glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(float), vertices.data(), GL_DYNAMIC_DRAW);
+    
+    // Set up shader
+    ui_shader_->use();
+    
+    // Set projection matrix
+    float vp_width = std::max(1.0f, (float)viewport_width_);
+    float vp_height = std::max(1.0f, (float)viewport_height_);
+    float projection[16] = {
+        2.0f / vp_width,  0,                  0, 0,
+        0,               -2.0f / vp_height,    0, 0,
+        0,                0,                  -1, 0,
+        -1,               1,                   0, 1
+    };
+    ui_shader_->set_uniform("u_projection", projection, 16);
+    
+    // Set texture uniform
+    ui_shader_->set_uniform("u_texture", 0);
+    glBindTexture(GL_TEXTURE_2D, white_texture_);
+    
+    // Setup vertex attributes matching the shader layout
+    // Layout: position(2) + texcoord(2) + color(4) = 8 floats per vertex
+    glEnableVertexAttribArray(0); // position
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)0);
+    glEnableVertexAttribArray(1); // texcoord
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(2 * sizeof(float)));
+    glEnableVertexAttribArray(2); // color
+    glVertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(4 * sizeof(float)));
+    
+    // Enable blending for transparency
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    
+    // Draw ring as triangle strip
+    glDrawArrays(GL_TRIANGLE_STRIP, 0, (segments + 1) * 2);
+    
+    // Cleanup
+    glBindVertexArray(0);
+    glDeleteVertexArrays(1, &ring_vao);
+    glDeleteBuffers(1, &ring_vbo);
+    
+    glUseProgram(0);
 }
 
 void CanvasRenderer::draw_text(const std::string& text, const Point2D& position, const ColorRGBA& color, float size) {
@@ -545,7 +821,18 @@ void CanvasRenderer::draw_widget(const Rect2D& rect, const ColorRGBA& color,
     ui_shader_->set_uniform("u_aa_radius", 1.0f); // Anti-aliasing radius in pixels
     ui_shader_->set_uniform("u_texture", 0);
     
-    glBindTexture(GL_TEXTURE_2D, white_texture_);
+    // Ensure texture is valid before binding
+    if (white_texture_ == 0 || !glIsTexture(white_texture_)) {
+        // Recreate texture if invalid
+        GLubyte white_pixel[4] = {255, 255, 255, 255};
+        glGenTextures(1, &white_texture_);
+        glBindTexture(GL_TEXTURE_2D, white_texture_);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 1, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, white_pixel);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    } else {
+        glBindTexture(GL_TEXTURE_2D, white_texture_);
+    }
     
     glBindVertexArray(ui_vao_);
     glBindBuffer(GL_ARRAY_BUFFER, ui_vbo_);
@@ -716,6 +1003,7 @@ void CanvasRenderer::setup_default_textures() {
     // Create white texture
     GLubyte white_pixel[4] = {255, 255, 255, 255};
     glGenTextures(1, &white_texture_);
+    std::cout << "Created white_texture_ with ID: " << white_texture_ << std::endl;
     glBindTexture(GL_TEXTURE_2D, white_texture_);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 1, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, white_pixel);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);

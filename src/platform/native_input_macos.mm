@@ -97,12 +97,12 @@ class NativeInput;
         else if (phase == NSEventPhaseCancelled) phase_str = "cancelled";
         else if (phase == NSEventPhaseStationary) phase_str = "stationary";
         
-        std::cout << "[Native] " 
-                  << (native_event.device_type == voxelux::platform::ScrollDeviceType::SmartMouse ? "SmartMouse" : "Trackpad")
-                  << " phase=" << phase_str
-                  << " momentum=" << (native_event.is_momentum ? "yes" : "no")
-                  << " delta=(" << native_event.delta_x << ", " << native_event.delta_y << ")"
-                  << std::endl;
+        // std::cout << "[Native] " 
+        //           << (native_event.device_type == voxelux::platform::ScrollDeviceType::SmartMouse ? "SmartMouse" : "Trackpad")
+        //           << " phase=" << phase_str
+        //           << " momentum=" << (native_event.is_momentum ? "yes" : "no")
+        //           << " delta=(" << native_event.delta_x << ", " << native_event.delta_y << ")"
+        //           << std::endl;
     } else {
         // Traditional mouse wheel - discrete scrolling
         native_event.device_type = voxelux::platform::ScrollDeviceType::MouseWheel;
@@ -147,8 +147,8 @@ class NativeInput;
     native_event.is_pinch = true;
     
     // Debug output
-    std::cout << "[Native] Trackpad magnification=" << magnification 
-              << " scaled_delta=" << native_event.delta_y << std::endl;
+    // std::cout << "[Native] Trackpad magnification=" << magnification 
+    //           << " scaled_delta=" << native_event.delta_y << std::endl;
     
     // Add to queue
     voxelux::platform::NativeInput::add_scroll_event(native_event);
@@ -209,7 +209,7 @@ bool NativeInput::initialize(void* glfw_window) {
     platform_data_ = interceptor;
     initialized_ = true;
     
-    std::cout << "NativeInput: Initialized for macOS" << std::endl;
+    // std::cout << "NativeInput: Initialized for macOS" << std::endl;
     return true;
 }
 
@@ -229,7 +229,7 @@ void NativeInput::shutdown() {
     clear_scroll_events();
     
     initialized_ = false;
-    std::cout << "NativeInput: Shutdown complete" << std::endl;
+    // std::cout << "NativeInput: Shutdown complete" << std::endl;
 }
 
 bool NativeInput::is_available() {

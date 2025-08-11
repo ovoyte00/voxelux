@@ -17,6 +17,7 @@
 #include "grid_3d_renderer.h"
 #include "viewport_navigation_handler.h"
 #include "camera_3d.h"
+#include "navigation_widget.h"
 #include <memory>
 
 namespace voxel_canvas {
@@ -75,6 +76,7 @@ private:
     // 3D scene components
     std::unique_ptr<Grid3DRenderer> grid_3d_;
     std::unique_ptr<ViewportNavigationHandler> nav_handler_;
+    std::unique_ptr<NavigationWidget> nav_widget_;
     
     // Professional 3D camera system
     Camera3D camera_;

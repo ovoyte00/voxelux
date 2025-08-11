@@ -6,7 +6,7 @@
  * distributed, or transmitted in any form or by any means without
  * prior written permission from Voxelux.
  * 
- * Professional 3D Grid Renderer using OpenGL shaders (Blender-inspired approach)
+ * Professional 3D Grid Renderer using OpenGL shaders
  */
 
 #pragma once
@@ -23,7 +23,7 @@ class Camera3D;
 
 /**
  * Professional 3D Grid Renderer using OpenGL shaders
- * Implements Blender's approach with procedural grid generation in fragment shader
+ * Modern procedural grid generation using fragment shader techniques
  */
 class Grid3DRenderer {
 public:

@@ -175,7 +175,7 @@ bool Grid3DRenderer::load_shaders() {
 }
 
 bool Grid3DRenderer::create_grid_geometry() {
-    // Create a large quad for the grid plane (like Blender's approach)
+    // Create a large quad for the grid plane using procedural generation
     float size = grid_scale_;
     float vertices[] = {
         // Position (x, y, z), TexCoord (u, v)

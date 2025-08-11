@@ -6,7 +6,7 @@
  * distributed, or transmitted in any form or by any means without
  * prior written permission from Voxelux.
  * 
- * 3D Viewport Navigation Handler - Blender-style navigation controls
+ * 3D Viewport Navigation Handler - Professional navigation controls
  * Professional 3D viewport navigation with mouse, trackpad, and smart mouse support
  */
 
@@ -19,11 +19,16 @@
 #include <memory>
 #include <chrono>
 
+// Forward declaration
+namespace voxelux::canvas_ui {
+    class ViewportNavigator;
+}
+
 namespace voxel_canvas {
 
 // Professional Camera3D system - no legacy forward declarations
 
-// Navigation mode types based on Blender's system
+// Navigation mode types for professional 3D viewport
 enum class NavigationMode {
     Orbit,      // Middle mouse drag - rotate around target
     Pan,        // Shift + middle mouse drag - pan view
@@ -41,7 +46,7 @@ enum class InputDevice {
     Unknown
 };
 
-// Navigation preferences structure (matches Blender's preferences)
+// Navigation preferences structure for professional viewport
 struct NavigationPreferences {
     // Mouse settings
     bool orbit_selection = true;        // Orbit around selection vs. viewport center
@@ -73,7 +78,7 @@ struct NavigationPreferences {
 
 /**
  * Professional 3D Viewport Navigation Handler
- * Implements Blender-style navigation controls with support for:
+ * Implements professional-grade navigation controls with support for:
  * - Standard mouse (3-button navigation)
  * - MacBook trackpad (gestures and natural scrolling)
  * - Smart mice (Magic Mouse gestures)
@@ -89,7 +94,7 @@ public:
     EventResult handle_event(const InputEvent& event) override;
     
     // Camera binding
-    void bind_camera(Camera3D* camera) { camera_ = camera; }
+    void bind_camera(Camera3D* camera);
     // Professional Camera3D only - no legacy support
     
     // Navigation preferences
@@ -105,7 +110,11 @@ public:
     bool is_navigating() const { return current_mode_ != NavigationMode::None; }
     
     // Viewport bounds for mouse position calculations
-    void set_viewport_bounds(const Rect2D& bounds) { viewport_bounds_ = bounds; }
+    void set_viewport_bounds(const Rect2D& bounds);
+    
+    // UI scale for sensitivity adjustments  
+    void set_ui_scale(float scale);
+    float get_ui_scale() const { return ui_scale_; }
     
     // Navigation controls (programmatic access)
     void start_orbit(const Point2D& start_pos);
@@ -122,8 +131,11 @@ private:
     // Core navigation implementations
     void handle_orbit(const Point2D& current_pos, const Point2D& delta);
     void handle_pan(const Point2D& current_pos, const Point2D& delta);
+    void handle_pan_with_source(const Point2D& current_pos, const Point2D& delta, EventType source);
+    void handle_pan_simple(const Point2D& current_pos, const Point2D& delta);
     void handle_zoom(float zoom_delta, const Point2D& mouse_pos = Point2D(0,0));
     void handle_dolly(const Point2D& current_pos, const Point2D& delta);
+    void reset_pan_state();
     
     // Input event processing
     bool handle_mouse_event(const InputEvent& event);
@@ -138,6 +150,7 @@ private:
     
     // Navigation mode detection
     NavigationMode detect_navigation_mode(const InputEvent& event);
+    NavigationMode detect_navigation_mode_from_modifiers(uint32_t modifiers);
     bool should_start_navigation(const InputEvent& event);
     bool should_end_navigation(const InputEvent& event);
     
@@ -197,7 +210,34 @@ private:
     
     // Performance optimization
     bool needs_camera_update_ = false;
+    bool needs_pan_reset_ = false;
     float min_movement_threshold_ = 0.1f;
+    
+    // Trackpad event tracking
+    EventType last_trackpad_event_ = EventType::MOUSE_MOVE;
+    EventType previous_trackpad_event_ = EventType::MOUSE_MOVE;
+    
+    // Trackpad gesture state tracking
+    Point2D trackpad_accumulated_scroll_{0, 0};  // Accumulated scroll position
+    Point2D trackpad_last_scroll_pos_{0, 0};     // Last scroll position for delta calculation
+    EventType trackpad_last_mode_ = EventType::MOUSE_MOVE;  // Last trackpad gesture mode
+    bool trackpad_gesture_active_ = false;        // Whether a trackpad gesture is active
+    
+    // Pan smoothing state
+    Point2D pan_smoothed_delta_{0, 0};           // Smoothed pan delta
+    Point2D pan_accumulated_micro_{0, 0};        // Accumulated micro movements
+    
+    // Pan state tracking to prevent jumps
+    Point2D pan_start_position_{0, 0};           // Camera position when pan started
+    Point2D pan_start_target_{0, 0};             // Camera target when pan started
+    Point2D pan_accumulated_delta_{0, 0};        // Total accumulated pan delta
+    bool pan_session_active_ = false;            // Whether we're in an active pan session
+    
+    // UI scale for proper sensitivity adjustment
+    float ui_scale_ = 1.0f;  // Default to 1.0, should be set from window
+    
+    // New clean viewport navigator
+    std::unique_ptr<voxelux::canvas_ui::ViewportNavigator> navigator_;
 };
 
 /**
@@ -216,7 +256,7 @@ public:
     static float calculate_pan_sensitivity(InputDevice device, float camera_distance);
     static float calculate_zoom_sensitivity(InputDevice device);
     
-    // Blender-compatible navigation calculations
+    // Industry-standard navigation calculations
     static void orbit_camera_around_target(Camera3D& camera, float pitch_delta, float yaw_delta, const Point2D& target);
     static void pan_camera_in_view_plane(Camera3D& camera, float x_delta, float y_delta);
     static void zoom_camera_towards_point(Camera3D& camera, float zoom_factor, const Point2D& screen_point, const Rect2D& viewport);

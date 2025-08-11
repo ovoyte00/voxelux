@@ -1,7 +1,7 @@
 #version 410 core
 
 // Fragment shader for infinite 3D grid with hierarchical detail levels
-// Voxel-based grid matching Blender's approach
+// Voxel-based grid with hierarchical detail rendering
 
 in vec3 world_pos;
 in vec3 view_pos;
@@ -19,7 +19,7 @@ uniform float grid_subdivision; // Subdivision factor (10 for decimal, 16 for Mi
 
 out vec4 color;
 
-// Match Blender's line rendering approach
+// Professional line rendering with anti-aliasing
 #define DISC_RADIUS 0.59
 #define LINE_SMOOTH_START (0.5 - DISC_RADIUS) 
 #define LINE_SMOOTH_END (0.5 + DISC_RADIUS)
@@ -36,7 +36,7 @@ float get_grid_line(vec2 pos, vec2 fwidth_pos, float grid_step) {
     // Collapse to single line distance
     float line_dist = min(grid_domain.x, grid_domain.y);
     
-    // Return line intensity using Blender's LINE_STEP approach
+    // Return line intensity using smooth step function
     return 1.0 - LINE_STEP(line_dist - line_size);
 }
 
@@ -81,12 +81,12 @@ void main() {
     // Combined fade for the entire grid
     float fade = angle_fade * distance_fade;
     
-    // Grid resolution using screen-space derivatives (Blender's approach)
+    // Grid resolution using screen-space derivatives
     // This tells us how much world space is covered by one pixel at this fragment
     // Using max of X and Z derivatives for consistent grid appearance
     float grid_res = max(abs(dFdxPos.x), abs(dFdxPos.z));
     
-    // Grid appears when it's about 4 pixels wide (Blender's threshold)
+    // Grid appears when it's about 4 pixels wide
     grid_res *= 4.0;
     
     // Grid subdivision (default 10, can be 16 for Minecraft)
@@ -100,7 +100,7 @@ void main() {
         steps[i] = steps[i-1] * subdiv;
     }
     
-    // Find appropriate scale level based on grid resolution (Blender's approach)
+    // Find appropriate scale level based on grid resolution
     int step_id = STEPS_LEN - 1;
     for (int i = STEPS_LEN - 2; i >= 0; i--) {
         if (grid_res < steps[i]) {
@@ -108,13 +108,13 @@ void main() {
         }
     }
     
-    // Select three consecutive scales (matching Blender's approach)
+    // Select three consecutive scales for smooth transitions
     float scale0 = step_id > 0 ? steps[step_id - 1] : 0.0;
     float scaleA = steps[step_id];
     float scaleB = min(step_id + 1, STEPS_LEN - 1) < STEPS_LEN ? steps[min(step_id + 1, STEPS_LEN - 1)] : scaleA;
     float scaleC = min(step_id + 2, STEPS_LEN - 1) < STEPS_LEN ? steps[min(step_id + 2, STEPS_LEN - 1)] : scaleB;
     
-    // Calculate blend factor exactly like Blender
+    // Calculate blend factor for smooth scale transitions
     // Smooth transition from previous scale to current scale
     float blend = 1.0 - linearstep(scale0, scaleA, grid_res);
     blend = blend * blend * blend; // Cubic for smooth transition
@@ -124,7 +124,7 @@ void main() {
     float gridB = get_grid_line(grid_pos, grid_fwidth, scaleB);
     float gridC = get_grid_line(grid_pos, grid_fwidth, scaleC);
     
-    // Combine grids exactly like Blender does
+    // Combine grids with proper blending
     vec4 out_color = grid_color;
     out_color.a *= gridA * blend; // Finest grid fades out uniformly via blend
     

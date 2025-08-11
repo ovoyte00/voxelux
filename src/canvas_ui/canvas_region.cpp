@@ -151,14 +151,14 @@ bool CanvasRegion::can_split() const {
 void CanvasRegion::render(CanvasRenderer* renderer) {
     if (!renderer) return;
     
-    // **Canvas UI Professional Rendering System** (original implementation inspired by Blender)
+    // **Canvas UI Professional Rendering System**
     // Check if this region needs to be redrawn
     if (!needs_update()) {
         return; // Skip rendering if no updates needed
     }
     
     // **Canvas UI Drawing Safety** - Prevent recursive invalidation during rendering
-    // Mark region as currently drawing (Blender uses RGN_DRAWING)
+    // Mark region as currently drawing to prevent recursion
     bool was_drawing = has_flag(RegionUpdateFlags::ANIMATION_ACTIVE); // Reuse existing flag
     if (was_drawing) {
         return; // Already drawing, prevent recursion

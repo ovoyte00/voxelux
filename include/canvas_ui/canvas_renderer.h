@@ -19,7 +19,10 @@
 #include <unordered_map>
 
 // Forward declare to avoid circular dependency
-namespace voxel_canvas { class FontSystem; }
+namespace voxel_canvas { 
+    class FontSystem;
+    class PolylineShader;
+}
 
 namespace voxel_canvas {
 
@@ -30,7 +33,7 @@ class TextRenderer;
 struct RenderBatch;
 struct UIVertex;
 
-// Widget instance data for GPU instancing (Blender-inspired architecture)
+// Widget instance data for GPU instancing with professional architecture
 struct WidgetInstance {
     // Transform: rect (x, y, width, height)
     float rect[4];
@@ -57,7 +60,7 @@ struct TextVertex {
 
 /**
  * Modern SDF-based renderer for Canvas UI
- * Inspired by Blender's GPU-accelerated widget rendering
+ * Professional GPU-accelerated widget rendering system
  */
 class CanvasRenderer {
 public:
@@ -78,6 +81,7 @@ public:
     void draw_rect_outline(const Rect2D& rect, const ColorRGBA& color, float line_width = 1.0f);
     void draw_line(const Point2D& start, const Point2D& end, const ColorRGBA& color, float width = 1.0f);
     void draw_circle(const Point2D& center, float radius, const ColorRGBA& color, int segments = 32);
+    void draw_circle_ring(const Point2D& center, float radius, const ColorRGBA& color, float thickness = 3.0f, int segments = 32);
     void draw_text(const std::string& text, const Point2D& position, const ColorRGBA& color, float size = 14.0f);
     
     // SDF-based widget rendering (future implementation)
@@ -116,6 +120,9 @@ public:
     
     // Matrix access for text rendering
     void get_projection_matrix(float* matrix) const;
+    
+    // Window properties access
+    float get_content_scale() const;
 
 private:
     // Shader and resource management
@@ -137,6 +144,7 @@ private:
     std::unique_ptr<ShaderProgram> ui_shader_;
     std::unique_ptr<ShaderProgram> text_shader_;
     std::unique_ptr<FontSystem> font_system_;
+    std::unique_ptr<PolylineShader> polyline_shader_;
     
     GLuint ui_vao_ = 0;
     GLuint ui_vbo_ = 0; 
