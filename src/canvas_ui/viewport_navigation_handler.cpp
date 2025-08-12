@@ -324,8 +324,34 @@ EventResult ViewportNavigationHandler::handle_event(const InputEvent& event) {
                         }
                     }
                     
-                    // Use vertical scroll component for zoom
-                    float zoom_delta = event.mouse_delta.y != 0 ? -event.mouse_delta.y : -event.wheel_delta;
+                    // Use both vertical and horizontal scroll components for zoom
+                    // Users often scroll diagonally on trackpads
+                    float zoom_delta = 0.0f;
+                    if (event.mouse_delta.y != 0 || event.mouse_delta.x != 0) {
+                        // Check if we need to invert for natural scrolling
+                        // With natural scrolling: scroll up (negative y) = zoom in (positive delta)
+                        // Without natural: scroll up (negative y) = zoom out (negative delta)
+                        float invert = event.trackpad.direction_inverted ? 1.0f : -1.0f;
+                        
+                        // Combine both axes - use the larger magnitude for zoom
+                        // This feels natural for diagonal scrolling
+                        float vertical = invert * event.mouse_delta.y;
+                        // Horizontal should be opposite - scroll right = zoom in (always)
+                        float horizontal = -invert * event.mouse_delta.x;
+                        
+                        // Use the component with larger magnitude, or combine them if similar
+                        if (std::abs(vertical) > std::abs(horizontal) * 1.5f) {
+                            zoom_delta = vertical;  // Primarily vertical
+                        } else if (std::abs(horizontal) > std::abs(vertical) * 1.5f) {
+                            zoom_delta = horizontal;  // Primarily horizontal
+                        } else {
+                            // Diagonal - average both components
+                            zoom_delta = (vertical + horizontal) * 0.7f;  // Scale down slightly for diagonal
+                        }
+                    } else {
+                        // Mouse wheel doesn't have natural scrolling (it's a physical wheel)
+                        zoom_delta = -event.wheel_delta;
+                    }
                     
                     // Accumulate the delta
                     accumulated_zoom_delta_ += zoom_delta;

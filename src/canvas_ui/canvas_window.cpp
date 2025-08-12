@@ -166,6 +166,18 @@ bool CanvasWindow::initialize() {
     if (voxelux::platform::NativeInput::is_available()) {
         if (voxelux::platform::NativeInput::initialize(window_)) {
             std::cout << "Native input helper initialized successfully" << std::endl;
+            
+            // Detect natural scroll direction from system preferences
+#ifdef __APPLE__
+            // On macOS, check the system preference for natural scrolling
+            // This is typically enabled by default on macOS ("natural" scrolling)
+            // For now, default to natural scrolling on macOS
+            natural_scroll_direction_ = true;  // macOS default is natural scrolling
+            std::cout << "Scroll direction: " << (natural_scroll_direction_ ? "Natural" : "Regular") << std::endl;
+#else
+            // On other platforms, use traditional scrolling by default
+            natural_scroll_direction_ = false;
+#endif
         } else {
             std::cout << "Warning: Native input helper failed to initialize" << std::endl;
         }
