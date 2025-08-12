@@ -90,6 +90,7 @@ void ViewportNavigator::start_pan(const glm::vec2& mouse_pos) {
     state_.mode = NavigationMode::PAN;
     state_.last_mouse_pos = mouse_pos;
     state_.mouse_delta = glm::vec2(0.0f);
+    state_.pan_smooth = glm::vec2(0.0f);  // Reset smooth state for fresh start
 }
 
 void ViewportNavigator::update_pan(const glm::vec2& mouse_pos, float delta_time) {
@@ -102,15 +103,8 @@ void ViewportNavigator::update_pan(const glm::vec2& mouse_pos, float delta_time)
     // Apply sensitivity with UI scale compensation (divide by scale for HiDPI)
     glm::vec2 scaled_delta = delta * pan_sensitivity_ / ui_scale_;
     
-    // For very small movements, apply directly without momentum
-    if (glm::length(scaled_delta) < 2.0f) {
-        // Direct application for fine control
-        apply_pan(scaled_delta);
-    } else {
-        // Update momentum for larger movements (smooth out movement)
-        state_.pan_momentum = state_.pan_momentum * 0.7f + scaled_delta * 0.3f;
-        apply_pan(state_.pan_momentum);
-    }
+    // Direct 1:1 application - no smoothing for immediate response
+    apply_pan(scaled_delta);
 }
 
 void ViewportNavigator::update_pan_delta(const glm::vec2& delta, float delta_time) {
@@ -119,15 +113,8 @@ void ViewportNavigator::update_pan_delta(const glm::vec2& delta, float delta_tim
     // Apply sensitivity with UI scale compensation (divide by scale for HiDPI)
     glm::vec2 scaled_delta = delta * pan_sensitivity_ / ui_scale_;
     
-    // Accumulate with decay
-    state_.pan_momentum = state_.pan_momentum * 0.4f + scaled_delta * 0.6f;
-    
-    // Smooth interpolation
-    const float smoothing_factor = 0.6f;
-    state_.pan_smooth = glm::mix(state_.pan_smooth, state_.pan_momentum, smoothing_factor);
-    
-    // Apply the smoothed delta
-    apply_pan(state_.pan_smooth);
+    // Direct application for trackpad too - let the OS handle smoothing
+    apply_pan(scaled_delta);
 }
 
 void ViewportNavigator::end_pan() {
@@ -135,7 +122,7 @@ void ViewportNavigator::end_pan() {
         state_.mode = NavigationMode::NONE;
         // Clear all pan-related state to prevent drift
         state_.pan_momentum = glm::vec2(0.0f);
-        state_.pan_smooth = glm::vec2(0.0f);
+        state_.pan_smooth = glm::vec2(0.0f);  // Important: reset smooth state
         state_.has_momentum = false;
     }
 }
@@ -186,8 +173,9 @@ void ViewportNavigator::apply_pan(const glm::vec2& delta) {
     }
     
     // Scale the screen delta to camera-space units
-    // Negate X because screen X goes right but we want to move the world left when dragging right
-    Vector3D camera_delta(-delta.x * movement_scale, delta.y * movement_scale, 0);
+    // For scrolling: positive delta.x should pan camera right (world moves left)
+    // For scrolling: positive delta.y should pan camera up (world moves down)
+    Vector3D camera_delta(delta.x * movement_scale, -delta.y * movement_scale, 0);
     
     // Debug: show camera delta
     if (pan_apply_counter % 10 == 0) {

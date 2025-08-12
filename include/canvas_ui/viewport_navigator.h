@@ -113,7 +113,7 @@ private:
     
     // Navigation parameters (base values before UI scale)
     float ui_scale_ = 1.0f;
-    float pan_sensitivity_ = 1.0f;
+    float pan_sensitivity_ = 3.0f;
     float orbit_sensitivity_mouse_ = 0.7f;       // Mouse orbit sensitivity (lower = less sensitive)
     float orbit_sensitivity_trackpad_ = 1.2f;    // Trackpad sensitivity (lower = less sensitive)
     float orbit_sensitivity_smartmouse_ = 0.7f;  // Smart mouse sensitivity
