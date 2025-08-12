@@ -191,8 +191,16 @@ EventResult ViewportNavigationHandler::handle_event(const InputEvent& event) {
                 }
                 
                 // Update pan with delta (trackpad gives us deltas, not positions)
-                std::cout << "[NavDebug] PAN update - delta: (" << mouse_delta.x << ", " << mouse_delta.y << ")" << std::endl;
-                navigator_->update_pan_delta(mouse_delta, 0.016f);  // ~60 FPS delta time
+                // On macOS with natural scrolling, pan deltas need to be inverted
+                // because natural scroll inverts the direction for scroll but pan should follow finger
+                glm::vec2 pan_delta = mouse_delta;
+                if (event.trackpad.direction_inverted) {
+                    // With natural scrolling, invert the deltas so pan follows finger movement
+                    pan_delta = -mouse_delta;
+                }
+                std::cout << "[NavDebug] PAN update - raw delta: (" << mouse_delta.x << ", " << mouse_delta.y 
+                          << "), adjusted delta: (" << pan_delta.x << ", " << pan_delta.y << ")" << std::endl;
+                navigator_->update_pan_delta(pan_delta, 0.016f);  // ~60 FPS delta time
                 return EventResult::HANDLED;
             }
             
@@ -205,12 +213,7 @@ EventResult ViewportNavigationHandler::handle_event(const InputEvent& event) {
                 bool shift_held = event.has_modifier(KeyModifier::SHIFT);
                 bool cmd_ctrl_held = event.has_modifier(KeyModifier::CMD) || event.has_modifier(KeyModifier::CTRL);
                 
-                std::cout << "[ROTATE_DEBUG] TRACKPAD_ROTATE event received - "
-                          << "shift=" << shift_held << ", cmd/ctrl=" << cmd_ctrl_held
-                          << ", delta=(" << event.mouse_delta.x << ", " << event.mouse_delta.y << ")"
-                          << ", current_mode=" << static_cast<int>(current_mode_)
-                          << ", nav_mode=" << (navigator_ ? static_cast<int>(navigator_->get_mode()) : -1)
-                          << std::endl;
+                // Trackpad rotate event received
                 
                 // Only handle rotation if NO modifiers are held
                 // This prevents conflicts with shift+pan and CMD+zoom operations
@@ -231,23 +234,21 @@ EventResult ViewportNavigationHandler::handle_event(const InputEvent& event) {
                     
                     // For trackpad/smart mouse rotate, use delta directly with device-specific sensitivity
                     bool is_smart_mouse = event.trackpad.is_smart_mouse;
-                    std::cout << "[ROTATE_DEBUG] Processing rotation - delta: (" << mouse_delta.x << ", " << mouse_delta.y 
-                              << "), device: " << (is_smart_mouse ? "SmartMouse" : "Trackpad") << std::endl;
+                    // Processing rotation
                     navigator_->update_orbit_delta(mouse_delta, 0.016f, is_smart_mouse);
                     return EventResult::HANDLED;
                 } else {
                     // If modifiers are held during rotation gesture, end any active orbit
                     // This prevents rotation events from accumulating during zoom
-                    std::cout << "[ROTATE_DEBUG] Rotation BLOCKED due to modifiers - "
-                              << "shift=" << shift_held << ", cmd/ctrl=" << cmd_ctrl_held << std::endl;
+                    // Rotation blocked due to modifiers
                     
                     if (navigator_->get_mode() == voxelux::canvas_ui::ViewportNavigator::NavigationMode::ORBIT) {
-                        std::cout << "[ROTATE_DEBUG] Force-ending ORBIT mode due to modifier" << std::endl;
+                        // Force-ending orbit mode due to modifier
                         navigator_->end_orbit();
                         current_mode_ = NavigationMode::None;
                     }
                     // Consume the event to prevent accumulation
-                    std::cout << "[ROTATE_DEBUG] Event CONSUMED to prevent accumulation" << std::endl;
+                    // Event consumed to prevent accumulation
                     return EventResult::HANDLED;
                 }
             }
@@ -296,6 +297,13 @@ EventResult ViewportNavigationHandler::handle_event(const InputEvent& event) {
                     // mouse_delta contains the actual 2D scroll values
                     float pan_x = event.mouse_delta.x * 10.0f;
                     float pan_y = event.mouse_delta.y * 10.0f;  // Use mouse_delta.y for vertical
+                    
+                    // Invert for natural scrolling so pan follows finger
+                    if (event.trackpad.direction_inverted) {
+                        pan_x = -pan_x;
+                        pan_y = -pan_y;
+                    }
+                    
                     glm::vec2 pan_delta(pan_x, pan_y);
                     std::cout << "[NavDebug] PAN (shift+scroll) - delta: (" << pan_x << ", " << pan_y << ")" << std::endl;
                     navigator_->update_pan_delta(pan_delta, 0.016f);

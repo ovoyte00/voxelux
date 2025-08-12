@@ -55,19 +55,21 @@ void ViewportNavigator::set_ui_scale(float scale) {
 }
 
 float ViewportNavigator::calculate_depth_factor(const glm::vec3& point) const {
-    // Project point through view-projection matrix to get depth
-    glm::mat4 view = get_view_matrix();
-    glm::mat4 proj = get_projection_matrix();
-    glm::mat4 view_proj = proj * view;
+    // For pan, we need the distance from camera to the point
+    float distance = glm::length(point - state_.camera_position);
     
-    glm::vec4 projected = view_proj * glm::vec4(point, 1.0f);
-    
-    // Get depth in view space
-    float z_depth = -projected.z;
+    // Debug output
+    static int depth_debug_counter = 0;
+    if (++depth_debug_counter % 30 == 0) {
+        std::cout << "[DEPTH] Point: (" << point.x << ", " << point.y << ", " << point.z << ")" << std::endl;
+        std::cout << "[DEPTH] Camera pos: (" << state_.camera_position.x << ", " 
+                  << state_.camera_position.y << ", " << state_.camera_position.z << ")" << std::endl;
+        std::cout << "[DEPTH] Distance: " << distance << std::endl;
+    }
     
     // Clamp to avoid near-zero values
-    if (std::abs(z_depth) < 0.001f) {
-        z_depth = (z_depth < 0) ? -0.001f : 0.001f;
+    if (distance < 1.0f) {
+        distance = 1.0f;
     }
     
     // For perspective, depth factor is the distance
@@ -75,40 +77,95 @@ float ViewportNavigator::calculate_depth_factor(const glm::vec3& point) const {
     if (state_.is_orthographic) {
         return state_.ortho_scale * 2.0f;
     } else {
-        return std::abs(z_depth);
+        return distance;
     }
 }
 
 glm::vec3 ViewportNavigator::screen_to_world_delta(const glm::vec2& screen_delta, float z_depth) const {
-    // Industry-standard approach: Transform screen delta through inverse matrices
-    // Step 1: Normalize screen coordinates to [-1, 1] range (NDC)
-    float normalized_x = 2.0f * screen_delta.x * z_depth / viewport_width_;
-    float normalized_y = 2.0f * screen_delta.y * z_depth / viewport_height_;
-    
-    // Step 2: Get projection and view matrices
-    glm::mat4 projection = get_projection_matrix();
+    // Get the inverse view matrix to transform from view space to world space
     glm::mat4 view = get_view_matrix();
-    
-    // Step 3: Compute inverse of projection matrix for unprojection
-    glm::mat4 proj_inv = glm::inverse(projection);
-    
-    // Step 4: Create a vector in clip space (using normalized coords)
-    // We use w=0 because we're transforming a direction, not a position
-    glm::vec4 clip_delta(normalized_x, normalized_y, 0.0f, 0.0f);
-    
-    // Step 5: Transform from clip space to view space
-    glm::vec4 view_delta = proj_inv * clip_delta;
-    
-    // Step 6: Transform from view space to world space
     glm::mat4 view_inv = glm::inverse(view);
-    glm::vec4 world_delta_4 = view_inv * view_delta;
     
-    // Step 7: Extract the 3D delta
-    glm::vec3 world_delta(world_delta_4.x, world_delta_4.y, world_delta_4.z);
+    // Extract the view's basis vectors from the inverse matrix
+    // In GLM (column-major), mat[i] gives you column i
+    // For inverse view matrix:
+    // - Column 0 = camera right in world space
+    // - Column 1 = camera up in world space  
+    // - Column 2 = camera backward in world space (-forward)
+    glm::vec3 view_right = glm::vec3(view_inv[0]);  // First column
+    glm::vec3 view_up = glm::vec3(view_inv[1]);     // Second column
     
-    // Step 8: Negate for drag behavior (drag right = world moves left)
-    return -world_delta;
+    // Calculate how much one pixel of screen movement translates to world movement
+    float aspect_ratio = static_cast<float>(viewport_width_) / viewport_height_;
+    float movement_scale;
+    
+    if (state_.is_orthographic) {
+        // In orthographic projection, movement is independent of depth
+        // Scale based on the orthographic view bounds
+        movement_scale = (state_.ortho_scale * 2.0f) / viewport_height_;
+    } else {
+        // In perspective projection, movement scales with distance from target
+        // Use field of view to determine the view cone size at the target distance
+        float fov_radians = glm::radians(state_.fov);
+        float view_height_at_target = 2.0f * z_depth * std::tan(fov_radians * 0.5f);
+        movement_scale = view_height_at_target / viewport_height_;
+    }
+    
+    // Apply sensitivity multiplier to make pan movement more noticeable
+    // This compensates for the small scale values we're getting
+    const float pan_sensitivity_multiplier = 50.0f;  // Increase for more sensitivity
+    movement_scale *= pan_sensitivity_multiplier;
+    
+    // Convert screen pixel deltas to world space distances
+    float horizontal_distance = screen_delta.x * movement_scale * aspect_ratio;
+    float vertical_distance = -screen_delta.y * movement_scale;  // Negative because screen Y is inverted
+    
+    // Combine the movements along the view's basis vectors
+    glm::vec3 world_movement = view_right * horizontal_distance + view_up * vertical_distance;
+    
+    // Debug output to verify the calculation
+    static int debug_counter = 0;
+    if (++debug_counter % 5 == 0) {  // More frequent debug output
+        // Extract forward for verification
+        glm::vec3 view_forward = -glm::vec3(view_inv[2]);  // Third column (negative because OpenGL looks down -Z)
+        
+        std::cout << "\n[PAN DEBUG] ===== Frame " << debug_counter << " =====" << std::endl;
+        std::cout << "  Camera position: (" << state_.camera_position.x << ", " 
+                  << state_.camera_position.y << ", " << state_.camera_position.z << ")" << std::endl;
+        std::cout << "  Camera target: (" << state_.camera_target.x << ", " 
+                  << state_.camera_target.y << ", " << state_.camera_target.z << ")" << std::endl;
+        std::cout << "  Screen delta: (" << screen_delta.x << ", " << screen_delta.y << ") pixels" << std::endl;
+        std::cout << "  Movement scale: " << movement_scale << " world units per pixel" << std::endl;
+        
+        std::cout << "\n  Basis vectors from inverse view matrix:" << std::endl;
+        std::cout << "    Right:   (" << view_right.x << ", " << view_right.y << ", " << view_right.z << ")" << std::endl;
+        std::cout << "    Up:      (" << view_up.x << ", " << view_up.y << ", " << view_up.z << ")" << std::endl;
+        std::cout << "    Forward: (" << view_forward.x << ", " << view_forward.y << ", " << view_forward.z << ")" << std::endl;
+        
+        // Verify orthogonality
+        float dot_right_up = glm::dot(view_right, view_up);
+        float dot_right_forward = glm::dot(view_right, view_forward);
+        float dot_up_forward = glm::dot(view_up, view_forward);
+        std::cout << "\n  Orthogonality check:" << std::endl;
+        std::cout << "    right·up = " << dot_right_up << " (should be ~0)" << std::endl;
+        std::cout << "    right·forward = " << dot_right_forward << " (should be ~0)" << std::endl;
+        std::cout << "    up·forward = " << dot_up_forward << " (should be ~0)" << std::endl;
+        
+        // Verify unit vectors
+        std::cout << "\n  Vector magnitudes:" << std::endl;
+        std::cout << "    |right| = " << glm::length(view_right) << " (should be ~1)" << std::endl;
+        std::cout << "    |up| = " << glm::length(view_up) << " (should be ~1)" << std::endl;
+        std::cout << "    |forward| = " << glm::length(view_forward) << " (should be ~1)" << std::endl;
+        
+        std::cout << "\n  World movement: (" << world_movement.x << ", " 
+                  << world_movement.y << ", " << world_movement.z << ")" << std::endl;
+        std::cout << "  Movement magnitude: " << glm::length(world_movement) << " world units" << std::endl;
+        std::cout << "[PAN DEBUG] =====================\n" << std::endl;
+    }
+    
+    return world_movement;
 }
+
 
 void ViewportNavigator::start_pan(const glm::vec2& mouse_pos) {
     // Clear all previous navigation state
@@ -168,25 +225,86 @@ void ViewportNavigator::end_pan() {
 }
 
 void ViewportNavigator::apply_pan(const glm::vec2& delta) {
-    // Calculate depth factor at orbit center
-    float depth = calculate_depth_factor(state_.orbit_center);
+    if (!camera_) return;
     
-    // Convert screen delta to world space movement
-    glm::vec3 world_delta = screen_to_world_delta(delta, depth);
+    // Clear any orbit momentum when panning to prevent interference
+    state_.orbit_momentum = glm::vec2(0.0f);
     
-    // Update both camera position and targets
-    // We SUBTRACT because when we drag right, we want the scene to move left (camera moves right relative to scene)
-    // This creates the "drag" metaphor where you're dragging the world
-    state_.camera_position -= world_delta;
-    state_.camera_target -= world_delta;
-    state_.orbit_center -= world_delta;
+    // Debug: show what we're receiving
+    static int pan_apply_counter = 0;
+    if (++pan_apply_counter % 10 == 0) {
+        std::cout << "[PAN APPLY] Delta received: (" << delta.x << ", " << delta.y << ")" << std::endl;
+    }
     
-    // Sync with camera
-    sync_camera_state();
+    // Calculate depth factor at current target (not orbit center)
+    float depth = calculate_depth_factor(state_.camera_target);
+    
+    // Debug: show depth calculation
+    if (pan_apply_counter % 10 == 0) {
+        std::cout << "[PAN APPLY] Depth factor: " << depth << std::endl;
+        std::cout << "[PAN APPLY] Camera target: (" << state_.camera_target.x << ", " 
+                  << state_.camera_target.y << ", " << state_.camera_target.z << ")" << std::endl;
+    }
+    
+    // Store old position for comparison
+    Vector3D old_position = camera_->get_position();
+    Vector3D old_target = camera_->get_target();
+    
+    // Camera3D::pan expects a delta where:
+    // x = amount to move along camera's right vector
+    // y = amount to move along camera's up vector
+    // We need to scale the screen delta by the appropriate factor
+    
+    // Calculate movement scale based on projection type and depth
+    float movement_scale;
+    float aspect_ratio = static_cast<float>(viewport_width_) / viewport_height_;
+    
+    if (state_.is_orthographic) {
+        // In orthographic, scale is based on view size
+        movement_scale = state_.ortho_scale * 2.0f / viewport_height_;
+    } else {
+        // In perspective, scale depends on distance to target
+        float fov_rad = glm::radians(state_.fov);
+        float view_height = 2.0f * depth * tan(fov_rad * 0.5f);
+        movement_scale = view_height / viewport_height_;
+    }
+    
+    // Scale the screen delta to camera-space units
+    // Negate X because screen X goes right but we want to move the world left when dragging right
+    Vector3D camera_delta(-delta.x * movement_scale, delta.y * movement_scale, 0);
+    
+    // Debug: show camera delta
+    if (pan_apply_counter % 10 == 0) {
+        std::cout << "[PAN APPLY] Camera delta: (" << camera_delta.x << ", " 
+                  << camera_delta.y << ", " << camera_delta.z << ")" << std::endl;
+        std::cout << "[PAN APPLY] Movement scale: " << movement_scale << std::endl;
+    }
+    
+    // Use Camera3D's built-in pan method which handles orbit mode correctly
+    camera_->pan(camera_delta);
+    
+    // Update our internal state to match the camera
+    Vector3D new_position = camera_->get_position();
+    Vector3D new_target = camera_->get_target();
+    Vector3D new_orbit_target = camera_->get_orbit_target();
+    
+    state_.camera_position = glm::vec3(new_position.x, new_position.y, new_position.z);
+    state_.camera_target = glm::vec3(new_target.x, new_target.y, new_target.z);
+    // Keep orbit center in sync when panning
+    state_.orbit_center = glm::vec3(new_orbit_target.x, new_orbit_target.y, new_orbit_target.z);
+    
+    // Debug: show actual change
+    if (pan_apply_counter % 10 == 0) {
+        std::cout << "[PAN APPLY] Camera moved from: (" << old_position.x << ", " 
+                  << old_position.y << ", " << old_position.z << ")" << std::endl;
+        std::cout << "[PAN APPLY] Camera moved to: (" << new_position.x << ", " 
+                  << new_position.y << ", " << new_position.z << ")" << std::endl;
+        std::cout << "[PAN APPLY] Actual movement: " << (new_position - old_position).length() << std::endl;
+    }
 }
 
 void ViewportNavigator::start_orbit(const glm::vec2& mouse_pos) {
-    std::cout << "[NAV_DEBUG] start_orbit called - pos=(" << mouse_pos.x << ", " << mouse_pos.y << ")" << std::endl;
+    // Start orbit at position
     
     // Clear all previous navigation state
     clear_momentum();
@@ -195,7 +313,7 @@ void ViewportNavigator::start_orbit(const glm::vec2& mouse_pos) {
     state_.last_mouse_pos = mouse_pos;
     state_.mouse_delta = glm::vec2(0.0f);
     
-    std::cout << "[NAV_DEBUG] Orbit started - mode set to ORBIT" << std::endl;
+    // Orbit started
 }
 
 void ViewportNavigator::update_orbit(const glm::vec2& mouse_pos, float delta_time) {
@@ -216,11 +334,10 @@ void ViewportNavigator::update_orbit(const glm::vec2& mouse_pos, float delta_tim
 }
 
 void ViewportNavigator::update_orbit_delta(const glm::vec2& delta, float delta_time, bool is_smart_mouse) {
-    std::cout << "[NAV_DEBUG] update_orbit_delta called - mode=" << static_cast<int>(state_.mode) 
-              << ", delta=(" << delta.x << ", " << delta.y << ")" << std::endl;
+    // Update orbit delta
     
     if (state_.mode != NavigationMode::ORBIT) {
-        std::cout << "[NAV_DEBUG] IGNORING orbit delta - not in ORBIT mode" << std::endl;
+        // Ignoring orbit delta - not in ORBIT mode
         return;
     }
     
@@ -243,7 +360,7 @@ void ViewportNavigator::update_orbit_delta(const glm::vec2& delta, float delta_t
 }
 
 void ViewportNavigator::end_orbit() {
-    std::cout << "[NAV_DEBUG] end_orbit called - current mode=" << static_cast<int>(state_.mode) << std::endl;
+    // End orbit
     
     if (state_.mode == NavigationMode::ORBIT) {
         state_.mode = NavigationMode::NONE;
@@ -252,100 +369,72 @@ void ViewportNavigator::end_orbit() {
         state_.orbit_smooth = glm::vec2(0.0f);
         state_.orbit_momentum = glm::vec2(0.0f);
         
-        std::cout << "[NAV_DEBUG] Orbit ended - mode set to NONE, momentum cleared" << std::endl;
+        // Orbit ended
     } else {
-        std::cout << "[NAV_DEBUG] end_orbit called but not in ORBIT mode" << std::endl;
+        // Not in orbit mode
     }
 }
 
 void ViewportNavigator::apply_orbit(const glm::vec2& delta) {
-    std::cout << "[NAV_DEBUG] apply_orbit called - delta=(" << delta.x << ", " << delta.y << ")" << std::endl;
+    if (!camera_) return;
     
-    // Industry-standard arcball implementation with original approach
+    // Clear any pan momentum when orbiting to prevent interference
+    state_.pan_momentum = glm::vec2(0.0f);
     
-    // Step 1: Convert mouse movement to spherical rotation
+    // Convert mouse movement to rotation angles
     // Sensitivity is already applied before calling this function
     float horizontal_angle = -delta.x * 0.01f;  // Convert to radians
     float vertical_angle = -delta.y * 0.01f;    // Convert to radians
     
-    // Step 2: Get current camera orbit radius
-    glm::vec3 cam_offset = state_.camera_position - state_.orbit_center;
-    float orbit_radius = glm::length(cam_offset);
-    
-    if (orbit_radius < 0.0001f) return; // Prevent division by zero
-    
-    // Step 3: Convert to spherical coordinates for manipulation
-    // Using standard spherical coordinate system: (r, theta, phi)
-    glm::vec3 normalized_offset = cam_offset / orbit_radius;
-    
-    // Calculate current spherical angles
-    float current_phi = std::acos(glm::clamp(normalized_offset.y, -1.0f, 1.0f));
-    float current_theta = std::atan2(normalized_offset.z, normalized_offset.x);
-    
-    if (use_trackball_) {
-        // Arcball mode: Full 3D rotation using quaternions
-        // Both axes are applied together for diagonal movement
-        
-        // Calculate view-aligned axes for rotation
-        glm::vec3 view_forward = glm::normalize(cam_offset);
-        glm::vec3 world_up = glm::vec3(0, 1, 0);
-        glm::vec3 view_right = glm::normalize(glm::cross(world_up, view_forward));
-        
-        // Handle special case when looking straight up/down
-        if (glm::length(view_right) < 0.001f) {
-            view_right = glm::vec3(1, 0, 0);
-        }
-        
-        // Create combined rotation from both axes simultaneously
-        // Horizontal rotation around world Y axis
-        glm::quat horizontal_rotation = glm::angleAxis(horizontal_angle, world_up);
-        
-        // Vertical rotation around view-aligned right axis
-        glm::quat vertical_rotation = glm::angleAxis(vertical_angle, view_right);
-        
-        // Combine rotations - order matters for intuitive control
-        glm::quat combined_rotation = horizontal_rotation * vertical_rotation;
-        
-        // Apply combined rotation to camera position
-        glm::vec3 new_offset = combined_rotation * cam_offset;
-        state_.camera_position = state_.orbit_center + new_offset;
-        
-        // Store rotation for other uses
-        state_.camera_rotation = combined_rotation * state_.camera_rotation;
-    } else {
-        // Turntable mode: Constrained rotation to prevent disorientation
-        
-        // Update spherical coordinates
-        float new_theta = current_theta + horizontal_angle;
-        float new_phi = current_phi + vertical_angle;
-        
-        // Clamp vertical angle to prevent flipping (5 to 175 degrees)
-        const float min_phi = glm::radians(5.0f);
-        const float max_phi = glm::radians(175.0f);
-        new_phi = glm::clamp(new_phi, min_phi, max_phi);
-        
-        // Convert back to Cartesian coordinates
-        glm::vec3 new_position;
-        new_position.x = orbit_radius * std::sin(new_phi) * std::cos(new_theta);
-        new_position.y = orbit_radius * std::cos(new_phi);
-        new_position.z = orbit_radius * std::sin(new_phi) * std::sin(new_theta);
-        
-        state_.camera_position = state_.orbit_center + new_position;
+    // Debug output
+    static int orbit_debug = 0;
+    if (++orbit_debug % 10 == 0) {
+        std::cout << "[ORBIT DEBUG]" << std::endl;
+        std::cout << "  Delta: (" << delta.x << ", " << delta.y << ")" << std::endl;
+        std::cout << "  Horizontal angle: " << glm::degrees(horizontal_angle) << " degrees" << std::endl;
+        std::cout << "  Vertical angle: " << glm::degrees(vertical_angle) << " degrees" << std::endl;
     }
     
-    // Always look at orbit center
-    state_.camera_target = state_.orbit_center;
+    // Store old state for debugging
+    Vector3D old_position = camera_->get_position();
+    Vector3D old_target = camera_->get_target();
     
-    // Update the actual camera
-    sync_camera_state();
+    // Use Camera3D's built-in orbit methods
+    // These handle the camera's internal state correctly without conflicts
+    camera_->rotate_around_target(horizontal_angle, vertical_angle);
+    
+    // Update our internal state to match the camera
+    Vector3D new_position = camera_->get_position();
+    Vector3D new_target = camera_->get_target();
+    
+    state_.camera_position = glm::vec3(new_position.x, new_position.y, new_position.z);
+    state_.camera_target = glm::vec3(new_target.x, new_target.y, new_target.z);
+    state_.orbit_center = state_.camera_target; // Keep orbit center at target
+    
+    // Debug: show actual change
+    if (orbit_debug % 10 == 0) {
+        std::cout << "  Camera moved from: (" << old_position.x << ", " 
+                  << old_position.y << ", " << old_position.z << ")" << std::endl;
+        std::cout << "  Camera moved to: (" << new_position.x << ", " 
+                  << new_position.y << ", " << new_position.z << ")" << std::endl;
+        std::cout << "  Orbit center: (" << state_.orbit_center.x << ", " 
+                  << state_.orbit_center.y << ", " << state_.orbit_center.z << ")" << std::endl;
+        
+        // Calculate the angle from camera to origin in XZ plane
+        glm::vec3 to_camera = state_.camera_position - state_.orbit_center;
+        float angle_rad = std::atan2(to_camera.z, to_camera.x);
+        float angle_deg = glm::degrees(angle_rad);
+        std::cout << "  Camera angle in XZ plane: " << angle_deg << " degrees" << std::endl;
+        std::cout << "  Distance from orbit center: " << glm::length(to_camera) << std::endl;
+    }
 }
 
 void ViewportNavigator::zoom(float delta, const glm::vec2& mouse_pos) {
-    std::cout << "[NAV_DEBUG] zoom called - delta=" << delta << ", current mode=" << static_cast<int>(state_.mode) << std::endl;
+    // Zoom called
     
     // Clear orbit state when zooming to prevent interference
     if (state_.mode == NavigationMode::ORBIT) {
-        std::cout << "[NAV_DEBUG] Ending orbit before zoom" << std::endl;
+        // Ending orbit before zoom
         end_orbit();
     }
     
@@ -372,8 +461,7 @@ void ViewportNavigator::zoom(float delta, const glm::vec2& mouse_pos) {
     // Debug what's happening
     static int zoom_debug = 0;
     if (++zoom_debug % 10 == 0) {
-        std::cout << "[Navigator] Zoom delta: " << delta << ", scaled: " << scaled_delta 
-                  << ", mouse: (" << mouse_pos.x << ", " << mouse_pos.y << ")" << std::endl;
+        // Zoom delta and mouse position
     }
     
     // Use simple zoom behavior - just move camera closer/farther from orbit center
@@ -475,32 +563,68 @@ void ViewportNavigator::clear_momentum() {
 }
 
 void ViewportNavigator::sync_camera_state() {
-    if (!camera_) return;
+    if (!camera_) {
+        std::cout << "[SYNC ERROR] No camera pointer!" << std::endl;
+        return;
+    }
     
     // Debug camera state changes
     static glm::vec3 last_pos = state_.camera_position;
     static glm::vec3 last_target = state_.camera_target;
     static int sync_count = 0;
     
-    if (++sync_count % 100 == 0 || glm::distance(last_pos, state_.camera_position) > 1.0f) {
-        glm::vec3 view_dir = glm::normalize(state_.camera_target - state_.camera_position);
-        std::cout << "[Navigator] Camera sync - pos: (" << state_.camera_position.x << ", " 
-                  << state_.camera_position.y << ", " << state_.camera_position.z 
-                  << "), view_dir: (" << view_dir.x << ", " << view_dir.y << ", " << view_dir.z << ")"
-                  << ", mode: " << static_cast<int>(state_.mode) << std::endl;
-        last_pos = state_.camera_position;
-        last_target = state_.camera_target;
-    }
+    // Always log position changes for debugging
+    float move_distance = glm::distance(last_pos, state_.camera_position);
+    float target_distance = glm::distance(last_target, state_.camera_target);
+    
+    std::cout << "[CAMERA SYNC] Syncing camera state:" << std::endl;
+    std::cout << "  Old Position: (" << last_pos.x << ", " << last_pos.y << ", " << last_pos.z << ")" << std::endl;
+    std::cout << "  New Position: (" << state_.camera_position.x << ", " 
+              << state_.camera_position.y << ", " << state_.camera_position.z << ")" << std::endl;
+    std::cout << "  Position change: " << move_distance << std::endl;
+    std::cout << "  Old Target: (" << last_target.x << ", " << last_target.y << ", " << last_target.z << ")" << std::endl;
+    std::cout << "  New Target: (" << state_.camera_target.x << ", " 
+              << state_.camera_target.y << ", " << state_.camera_target.z << ")" << std::endl;
+    std::cout << "  Target change: " << target_distance << std::endl;
+    
+    last_pos = state_.camera_position;
+    last_target = state_.camera_target;
+    
+    // CRITICAL: Set camera to Fly mode before updating position/target
+    // Otherwise Camera3D's update_orbit_from_position() will recalculate and override our position!
+    camera_->set_navigation_mode(Camera3D::NavigationMode::Fly);
     
     // Update camera with new state - convert glm::vec3 to Vector3D
     camera_->set_position(Vector3D(state_.camera_position.x, state_.camera_position.y, state_.camera_position.z));
     camera_->set_target(Vector3D(state_.camera_target.x, state_.camera_target.y, state_.camera_target.z));
     camera_->set_orbit_target(Vector3D(state_.orbit_center.x, state_.orbit_center.y, state_.orbit_center.z));
     
-    // Camera matrices are updated automatically in Camera3D
+    // Verify the camera was updated
+    Vector3D cam_pos = camera_->get_position();
+    Vector3D cam_target = camera_->get_target();
+    
+    std::cout << "[CAMERA SYNC] Camera after update:" << std::endl;
+    std::cout << "  Camera->get_position(): (" << cam_pos.x << ", " << cam_pos.y << ", " << cam_pos.z << ")" << std::endl;
+    std::cout << "  Camera->get_target(): (" << cam_target.x << ", " << cam_target.y << ", " << cam_target.z << ")" << std::endl;
+    
+    // Check if the values match what we set
+    bool position_matches = (std::abs(cam_pos.x - state_.camera_position.x) < 0.001f &&
+                             std::abs(cam_pos.y - state_.camera_position.y) < 0.001f &&
+                             std::abs(cam_pos.z - state_.camera_position.z) < 0.001f);
+    bool target_matches = (std::abs(cam_target.x - state_.camera_target.x) < 0.001f &&
+                          std::abs(cam_target.y - state_.camera_target.y) < 0.001f &&
+                          std::abs(cam_target.z - state_.camera_target.z) < 0.001f);
+    
+    if (!position_matches || !target_matches) {
+        std::cout << "[CAMERA SYNC ERROR] Camera did not accept new values!" << std::endl;
+    } else {
+        std::cout << "[CAMERA SYNC] Camera successfully updated!" << std::endl;
+    }
 }
 
 glm::mat4 ViewportNavigator::get_view_matrix() const {
+    // Use camera_target instead of orbit_center for view
+    // This allows pan to move the target independently
     return glm::lookAt(state_.camera_position, state_.camera_target, glm::vec3(0, 1, 0));
 }
 

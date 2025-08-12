@@ -498,7 +498,7 @@ void CanvasWindow::on_mouse_scroll(double x_offset, double y_offset) {
     // Check if we should ignore scroll events temporarily
     double now = glfwGetTime();
     if (scroll_ignore_until_ > 0 && now < scroll_ignore_until_) {
-        std::cout << "[Scroll] Ignoring event during modifier transition window" << std::endl;
+        // Ignoring event during modifier transition window
         return;
     }
     
@@ -512,9 +512,7 @@ void CanvasWindow::on_mouse_scroll(double x_offset, double y_offset) {
     static int scroll_event_count = 0;
     double time_delta = now - last_scroll_time;
     if (++scroll_event_count % 20 == 0) {  // Log every 20th event
-        std::cout << "[Scroll Event] x=" << x_offset << " y=" << y_offset 
-                  << " modifiers=" << keyboard_modifiers_ 
-                  << " time_delta=" << time_delta << "s" << std::endl;
+        // Scroll event: x, y, modifiers, time_delta
     }
     last_scroll_time = now;
     
@@ -566,7 +564,7 @@ void CanvasWindow::on_mouse_scroll(double x_offset, double y_offset) {
         // NEVER allow momentum events to start a new gesture
         // Momentum can only continue an existing gesture
         if (native_event.is_momentum && current_gesture_ == GestureType::None) {
-            std::cout << "[Scroll] Ignoring momentum - cannot start new gesture with momentum" << std::endl;
+            // Ignoring momentum - cannot start new gesture with momentum
             return;
         }
         
@@ -591,7 +589,7 @@ void CanvasWindow::on_mouse_scroll(double x_offset, double y_offset) {
                 
                 // If shift is pressed but we weren't panning, this is old momentum
                 if (!was_panning && shift_held) {
-                    std::cout << "[Scroll] Blocking old momentum when starting new pan" << std::endl;
+                    // Blocking old momentum when starting new pan
                     return;  // Block old momentum when starting new pan
                 }
             }
