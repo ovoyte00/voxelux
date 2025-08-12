@@ -106,6 +106,17 @@ private:
     bool natural_scroll_direction_ = false; // Smart mouse/trackpad scroll direction
     double scroll_ignore_until_ = 0.0; // Timestamp until which to ignore scroll events
     
+    // Gesture tracking to prevent event type changes mid-gesture
+    enum class GestureType {
+        None,
+        Rotate,     // Trackpad rotate gesture
+        Pan,        // Shift + trackpad pan
+        Zoom        // CMD/CTRL + trackpad scroll
+    };
+    GestureType current_gesture_ = GestureType::None;
+    double last_scroll_time_ = 0.0;  // Track when last scroll event occurred
+    static constexpr double GESTURE_TIMEOUT = 0.15; // 150ms timeout for gesture continuity
+    
     // Initialization state
     bool initialized_ = false;
     bool gl_context_initialized_ = false;

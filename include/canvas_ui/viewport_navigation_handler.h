@@ -196,7 +196,15 @@ private:
     // Viewport information
     Rect2D viewport_bounds_{0, 0, 800, 600};
     
+    // Rotation suppression after zoom
+    static constexpr double ROTATION_SUPPRESSION_TIME = 0.1;  // Suppress rotation for 100ms after zoom
+    
+    // Zoom accumulation (moved from static to member variable)
+    float accumulated_zoom_delta_ = 0.0f;
+    double last_zoom_accumulation_time_ = 0.0;
+    
     // Timing and gestures
+    double last_zoom_time_ = 0.0;  // Time when last zoom occurred
     std::chrono::steady_clock::time_point last_click_time_;
     std::chrono::steady_clock::time_point gesture_start_time_;
     int consecutive_clicks_ = 0;

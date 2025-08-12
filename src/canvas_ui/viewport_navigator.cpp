@@ -111,15 +111,12 @@ glm::vec3 ViewportNavigator::screen_to_world_delta(const glm::vec2& screen_delta
 }
 
 void ViewportNavigator::start_pan(const glm::vec2& mouse_pos) {
+    // Clear all previous navigation state
+    clear_momentum();
+    
     state_.mode = NavigationMode::PAN;
     state_.last_mouse_pos = mouse_pos;
     state_.mouse_delta = glm::vec2(0.0f);
-    
-    // Clear orbit momentum when starting pan
-    state_.orbit_momentum = glm::vec2(0.0f);
-    state_.zoom_momentum = 0.0f;
-    // Reset smoothing for new gesture
-    state_.pan_smooth = glm::vec2(0.0f);
 }
 
 void ViewportNavigator::update_pan(const glm::vec2& mouse_pos, float delta_time) {
@@ -149,39 +146,24 @@ void ViewportNavigator::update_pan_delta(const glm::vec2& delta, float delta_tim
     // Apply sensitivity with UI scale compensation (divide by scale for HiDPI)
     glm::vec2 scaled_delta = delta * pan_sensitivity_ / ui_scale_;
     
-    // Hybrid smoothing approach (same as orbit)
-    static glm::vec2 target_velocity(0.0f);
-    static bool was_panning = false;
-    
-    if (!was_panning) {
-        target_velocity = glm::vec2(0.0f);
-        was_panning = true;
-    }
-    
     // Accumulate with decay
-    target_velocity = target_velocity * 0.4f + scaled_delta * 0.6f;
+    state_.pan_momentum = state_.pan_momentum * 0.4f + scaled_delta * 0.6f;
     
     // Smooth interpolation
     const float smoothing_factor = 0.6f;
-    state_.pan_smooth = glm::mix(state_.pan_smooth, target_velocity, smoothing_factor);
+    state_.pan_smooth = glm::mix(state_.pan_smooth, state_.pan_momentum, smoothing_factor);
     
     // Apply the smoothed delta
     apply_pan(state_.pan_smooth);
-    
-    if (state_.mode != NavigationMode::PAN) {
-        was_panning = false;
-        target_velocity = glm::vec2(0.0f);
-    }
 }
 
 void ViewportNavigator::end_pan() {
     if (state_.mode == NavigationMode::PAN) {
         state_.mode = NavigationMode::NONE;
-        // Disable momentum for pan to prevent drift
+        // Clear all pan-related state to prevent drift
         state_.pan_momentum = glm::vec2(0.0f);
-        state_.has_momentum = false;
-        // Clear smoothing when ending gesture
         state_.pan_smooth = glm::vec2(0.0f);
+        state_.has_momentum = false;
     }
 }
 
@@ -204,15 +186,16 @@ void ViewportNavigator::apply_pan(const glm::vec2& delta) {
 }
 
 void ViewportNavigator::start_orbit(const glm::vec2& mouse_pos) {
+    std::cout << "[NAV_DEBUG] start_orbit called - pos=(" << mouse_pos.x << ", " << mouse_pos.y << ")" << std::endl;
+    
+    // Clear all previous navigation state
+    clear_momentum();
+    
     state_.mode = NavigationMode::ORBIT;
     state_.last_mouse_pos = mouse_pos;
     state_.mouse_delta = glm::vec2(0.0f);
     
-    // Clear pan momentum when starting orbit
-    state_.pan_momentum = glm::vec2(0.0f);
-    state_.zoom_momentum = 0.0f;
-    // Reset smoothing for new gesture
-    state_.orbit_smooth = glm::vec2(0.0f);
+    std::cout << "[NAV_DEBUG] Orbit started - mode set to ORBIT" << std::endl;
 }
 
 void ViewportNavigator::update_orbit(const glm::vec2& mouse_pos, float delta_time) {
@@ -233,7 +216,13 @@ void ViewportNavigator::update_orbit(const glm::vec2& mouse_pos, float delta_tim
 }
 
 void ViewportNavigator::update_orbit_delta(const glm::vec2& delta, float delta_time, bool is_smart_mouse) {
-    if (state_.mode != NavigationMode::ORBIT) return;
+    std::cout << "[NAV_DEBUG] update_orbit_delta called - mode=" << static_cast<int>(state_.mode) 
+              << ", delta=(" << delta.x << ", " << delta.y << ")" << std::endl;
+    
+    if (state_.mode != NavigationMode::ORBIT) {
+        std::cout << "[NAV_DEBUG] IGNORING orbit delta - not in ORBIT mode" << std::endl;
+        return;
+    }
     
     // Choose sensitivity based on device type
     float sensitivity = is_smart_mouse ? orbit_sensitivity_smartmouse_ : orbit_sensitivity_trackpad_;
@@ -241,45 +230,37 @@ void ViewportNavigator::update_orbit_delta(const glm::vec2& delta, float delta_t
     // Apply sensitivity with UI scale compensation (divide by scale for HiDPI)
     glm::vec2 scaled_delta = delta * sensitivity / ui_scale_;
     
-    // Hybrid approach: accumulate input for continuous movement, then interpolate
-    // This gives us both responsiveness and smoothness
-    static glm::vec2 target_velocity(0.0f);
-    static bool was_orbiting = false;
-    
-    // Reset target if just started orbiting
-    if (!was_orbiting) {
-        target_velocity = glm::vec2(0.0f);
-        was_orbiting = true;
-    }
-    
-    // Accumulate the new delta into our target with higher weight for new input
-    target_velocity = target_velocity * 0.4f + scaled_delta * 0.6f;  // More weight on new input
+    // Accumulate the new delta into our momentum with higher weight for new input
+    state_.orbit_momentum = state_.orbit_momentum * 0.4f + scaled_delta * 0.6f;  // More weight on new input
     
     // Smoothly interpolate current velocity toward target
     // Higher factor = more responsive, lower = smoother
     const float smoothing_factor = 0.4f;  // More smoothing for smoother feel
-    state_.orbit_smooth = glm::mix(state_.orbit_smooth, target_velocity, smoothing_factor);
+    state_.orbit_smooth = glm::mix(state_.orbit_smooth, state_.orbit_momentum, smoothing_factor);
     
     // Apply the smoothed delta
     apply_orbit(state_.orbit_smooth);
-    
-    // Track state for next frame
-    if (state_.mode != NavigationMode::ORBIT) {
-        was_orbiting = false;
-        target_velocity = glm::vec2(0.0f);
-    }
 }
 
 void ViewportNavigator::end_orbit() {
+    std::cout << "[NAV_DEBUG] end_orbit called - current mode=" << static_cast<int>(state_.mode) << std::endl;
+    
     if (state_.mode == NavigationMode::ORBIT) {
         state_.mode = NavigationMode::NONE;
         state_.has_momentum = true;
-        // Clear smoothing when ending gesture
+        // Clear all orbit-related state when ending gesture
         state_.orbit_smooth = glm::vec2(0.0f);
+        state_.orbit_momentum = glm::vec2(0.0f);
+        
+        std::cout << "[NAV_DEBUG] Orbit ended - mode set to NONE, momentum cleared" << std::endl;
+    } else {
+        std::cout << "[NAV_DEBUG] end_orbit called but not in ORBIT mode" << std::endl;
     }
 }
 
 void ViewportNavigator::apply_orbit(const glm::vec2& delta) {
+    std::cout << "[NAV_DEBUG] apply_orbit called - delta=(" << delta.x << ", " << delta.y << ")" << std::endl;
+    
     // Industry-standard arcball implementation with original approach
     
     // Step 1: Convert mouse movement to spherical rotation
@@ -360,6 +341,14 @@ void ViewportNavigator::apply_orbit(const glm::vec2& delta) {
 }
 
 void ViewportNavigator::zoom(float delta, const glm::vec2& mouse_pos) {
+    std::cout << "[NAV_DEBUG] zoom called - delta=" << delta << ", current mode=" << static_cast<int>(state_.mode) << std::endl;
+    
+    // Clear orbit state when zooming to prevent interference
+    if (state_.mode == NavigationMode::ORBIT) {
+        std::cout << "[NAV_DEBUG] Ending orbit before zoom" << std::endl;
+        end_orbit();
+    }
+    
     // Apply sensitivity based on input device characteristics with UI scale compensation
     float sensitivity = zoom_sensitivity_ / ui_scale_;
     
@@ -480,6 +469,8 @@ void ViewportNavigator::clear_momentum() {
     state_.pan_momentum = glm::vec2(0.0f);
     state_.orbit_momentum = glm::vec2(0.0f);
     state_.zoom_momentum = 0.0f;
+    state_.pan_smooth = glm::vec2(0.0f);
+    state_.orbit_smooth = glm::vec2(0.0f);
     state_.has_momentum = false;
 }
 

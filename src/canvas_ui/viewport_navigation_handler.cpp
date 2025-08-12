@@ -102,20 +102,63 @@ EventResult ViewportNavigationHandler::handle_event(const InputEvent& event) {
     
     // Handle modifier change events
     if (event.type == EventType::MODIFIER_CHANGE) {
-        // Check if shift was released during pan
         bool shift_held = event.has_modifier(KeyModifier::SHIFT);
+        bool cmd_held = event.has_modifier(KeyModifier::CMD);
+        bool ctrl_held = event.has_modifier(KeyModifier::CTRL);
+        
+        std::cout << "[MOD_DEBUG] MODIFIER_CHANGE - shift=" << shift_held 
+                  << ", cmd=" << cmd_held << ", ctrl=" << ctrl_held
+                  << ", current_mode=" << static_cast<int>(current_mode_)
+                  << ", nav_mode=" << (navigator_ ? static_cast<int>(navigator_->get_mode()) : -1)
+                  << std::endl;
+        
+        // Check if shift was released during pan
         if (!shift_held && navigator_->get_mode() == voxelux::canvas_ui::ViewportNavigator::NavigationMode::PAN) {
-            std::cout << "[NavDebug] Shift released - ending PAN mode" << std::endl;
+            std::cout << "[MOD_DEBUG] Shift released - ending PAN mode" << std::endl;
             navigator_->end_pan();
             current_mode_ = NavigationMode::None;
         }
         // Check if shift was pressed during orbit - switch to pan
         if (shift_held && navigator_->get_mode() == voxelux::canvas_ui::ViewportNavigator::NavigationMode::ORBIT) {
-            std::cout << "[NavDebug] Shift pressed - switching from ROTATE to PAN" << std::endl;
+            std::cout << "[MOD_DEBUG] Shift pressed - switching from ROTATE to PAN" << std::endl;
             navigator_->end_orbit();
             navigator_->start_pan(glm::vec2(last_mouse_pos_.x, last_mouse_pos_.y));
             current_mode_ = NavigationMode::Pan;
         }
+        
+        // Check if CMD/CTRL was released while we were zooming
+        if (!cmd_held && !ctrl_held && current_mode_ == NavigationMode::Zoom) {
+            std::cout << "[MOD_DEBUG] CMD/CTRL released - STOPPING ALL ZOOM PROCESSING" << std::endl;
+            current_mode_ = NavigationMode::None;
+            
+            // Clear any accumulated zoom delta
+            accumulated_zoom_delta_ = 0.0f;
+            last_zoom_accumulation_time_ = 0.0;
+            
+            // Clear any momentum in the navigator
+            if (navigator_) {
+                navigator_->clear_momentum();
+            }
+            
+            std::cout << "[MOD_DEBUG] Cleared all zoom state and momentum" << std::endl;
+        }
+        
+        // Also handle shift release during pan
+        if (!shift_held && current_mode_ == NavigationMode::Pan) {
+            std::cout << "[MOD_DEBUG] Shift released - STOPPING ALL PAN PROCESSING" << std::endl;
+            current_mode_ = NavigationMode::None;
+            
+            // End pan in navigator
+            if (navigator_ && navigator_->get_mode() == voxelux::canvas_ui::ViewportNavigator::NavigationMode::PAN) {
+                navigator_->end_pan();
+            }
+            
+            // Clear momentum
+            if (navigator_) {
+                navigator_->clear_momentum();
+            }
+        }
+        
         return EventResult::HANDLED;
     }
     
@@ -162,6 +205,13 @@ EventResult ViewportNavigationHandler::handle_event(const InputEvent& event) {
                 bool shift_held = event.has_modifier(KeyModifier::SHIFT);
                 bool cmd_ctrl_held = event.has_modifier(KeyModifier::CMD) || event.has_modifier(KeyModifier::CTRL);
                 
+                std::cout << "[ROTATE_DEBUG] TRACKPAD_ROTATE event received - "
+                          << "shift=" << shift_held << ", cmd/ctrl=" << cmd_ctrl_held
+                          << ", delta=(" << event.mouse_delta.x << ", " << event.mouse_delta.y << ")"
+                          << ", current_mode=" << static_cast<int>(current_mode_)
+                          << ", nav_mode=" << (navigator_ ? static_cast<int>(navigator_->get_mode()) : -1)
+                          << std::endl;
+                
                 // Only handle rotation if NO modifiers are held
                 // This prevents conflicts with shift+pan and CMD+zoom operations
                 if (!shift_held && !cmd_ctrl_held) {
@@ -181,18 +231,24 @@ EventResult ViewportNavigationHandler::handle_event(const InputEvent& event) {
                     
                     // For trackpad/smart mouse rotate, use delta directly with device-specific sensitivity
                     bool is_smart_mouse = event.trackpad.is_smart_mouse;
-                    // Only log occasionally to reduce spam
-                    static int rotate_log_count = 0;
-                    if (++rotate_log_count % 30 == 0) {
-                        std::cout << "[NavDebug] ROTATE update - delta: (" << mouse_delta.x << ", " << mouse_delta.y 
-                                  << "), device: " << (is_smart_mouse ? "SmartMouse" : "Trackpad") << std::endl;
-                    }
+                    std::cout << "[ROTATE_DEBUG] Processing rotation - delta: (" << mouse_delta.x << ", " << mouse_delta.y 
+                              << "), device: " << (is_smart_mouse ? "SmartMouse" : "Trackpad") << std::endl;
                     navigator_->update_orbit_delta(mouse_delta, 0.016f, is_smart_mouse);
                     return EventResult::HANDLED;
                 } else {
-                    // If any modifiers are held, ignore this rotation event
-                    // Shift = let pan handle it, CMD/CTRL = let zoom handle it
-                    return EventResult::IGNORED;
+                    // If modifiers are held during rotation gesture, end any active orbit
+                    // This prevents rotation events from accumulating during zoom
+                    std::cout << "[ROTATE_DEBUG] Rotation BLOCKED due to modifiers - "
+                              << "shift=" << shift_held << ", cmd/ctrl=" << cmd_ctrl_held << std::endl;
+                    
+                    if (navigator_->get_mode() == voxelux::canvas_ui::ViewportNavigator::NavigationMode::ORBIT) {
+                        std::cout << "[ROTATE_DEBUG] Force-ending ORBIT mode due to modifier" << std::endl;
+                        navigator_->end_orbit();
+                        current_mode_ = NavigationMode::None;
+                    }
+                    // Consume the event to prevent accumulation
+                    std::cout << "[ROTATE_DEBUG] Event CONSUMED to prevent accumulation" << std::endl;
+                    return EventResult::HANDLED;
                 }
             }
             
@@ -245,24 +301,26 @@ EventResult ViewportNavigationHandler::handle_event(const InputEvent& event) {
                     navigator_->update_pan_delta(pan_delta, 0.016f);
                 } else if (cmd_ctrl_held) {
                     // CMD/CTRL + trackpad/smart mouse scroll = Zoom (vertical only)
+                    // Always end any active orbit when CMD/CTRL is detected
+                    if (navigator_->get_mode() == voxelux::canvas_ui::ViewportNavigator::NavigationMode::ORBIT) {
+                        std::cout << "[NavDebug] Ending ORBIT mode for ZOOM (CMD/CTRL detected)" << std::endl;
+                        navigator_->end_orbit();
+                        current_mode_ = NavigationMode::None;
+                    }
+                    
                     // Accumulate small deltas to avoid event spam
-                    static float accumulated_zoom_delta = 0.0f;
-                    static double last_zoom_time = 0.0;
                     const float MIN_ZOOM_DELTA = 5.0f;  // Minimum accumulated delta before zooming
                     const double ZOOM_TIMEOUT = 0.1;    // Reset accumulator after 100ms
                     
                     double now = glfwGetTime();
                     
                     // Reset accumulator if too much time has passed
-                    if (now - last_zoom_time > ZOOM_TIMEOUT) {
-                        accumulated_zoom_delta = 0.0f;
+                    if (now - last_zoom_accumulation_time_ > ZOOM_TIMEOUT) {
+                        accumulated_zoom_delta_ = 0.0f;
                         // End any active navigation modes when starting fresh zoom
                         if (navigator_->get_mode() == voxelux::canvas_ui::ViewportNavigator::NavigationMode::PAN) {
                             std::cout << "[NavDebug] Ending PAN mode for ZOOM (CMD/CTRL + scroll)" << std::endl;
                             navigator_->end_pan();
-                        } else if (navigator_->get_mode() == voxelux::canvas_ui::ViewportNavigator::NavigationMode::ORBIT) {
-                            std::cout << "[NavDebug] Ending ROTATE mode for ZOOM (CMD/CTRL + scroll)" << std::endl;
-                            navigator_->end_orbit();
                         }
                     }
                     
@@ -270,22 +328,22 @@ EventResult ViewportNavigationHandler::handle_event(const InputEvent& event) {
                     float zoom_delta = event.mouse_delta.y != 0 ? -event.mouse_delta.y : -event.wheel_delta;
                     
                     // Accumulate the delta
-                    accumulated_zoom_delta += zoom_delta;
-                    last_zoom_time = now;
+                    accumulated_zoom_delta_ += zoom_delta;
+                    last_zoom_accumulation_time_ = now;
                     
                     // Debug: show accumulation
                     static int zoom_debug_count = 0;
                     if (++zoom_debug_count % 10 == 0) {  // Log every 10th event
                         std::cout << "[NavDebug] ZOOM accumulating - delta: " << zoom_delta 
-                                  << ", accumulated: " << accumulated_zoom_delta << std::endl;
+                                  << ", accumulated: " << accumulated_zoom_delta_ << std::endl;
                     }
                     
                     // Only zoom if we've accumulated enough delta
-                    if (std::abs(accumulated_zoom_delta) >= MIN_ZOOM_DELTA) {
-                        std::cout << "[NavDebug] ZOOM executing - accumulated delta: " << accumulated_zoom_delta << std::endl;
-                        navigator_->zoom(accumulated_zoom_delta, mouse_pos);
+                    if (std::abs(accumulated_zoom_delta_) >= MIN_ZOOM_DELTA) {
+                        std::cout << "[NavDebug] ZOOM executing - accumulated delta: " << accumulated_zoom_delta_ << std::endl;
+                        navigator_->zoom(accumulated_zoom_delta_, mouse_pos);
                         current_mode_ = NavigationMode::Zoom;
-                        accumulated_zoom_delta = 0.0f;  // Reset after zooming
+                        accumulated_zoom_delta_ = 0.0f;  // Reset after zooming
                     }
                 } else {
                     // No modifiers with trackpad scroll
