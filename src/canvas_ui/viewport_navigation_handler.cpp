@@ -442,8 +442,8 @@ EventResult ViewportNavigationHandler::handle_event(const InputEvent& event) {
                         current_mode_ = NavigationMode::Orbit;
                         is_dragging_ = true;
                         
-                        // Capture cursor for infinite dragging (Blender-style)
-                        // Following Blender's approach: ALWAYS capture cursor for rotation
+                        // Capture cursor for infinite dragging
+                        // Always capture cursor for rotation operations
                         // The navigator will handle the initial warp properly
                         if (window_) {
                             window_->capture_cursor();
@@ -526,7 +526,7 @@ bool ViewportNavigationHandler::handle_keyboard_navigation(const InputEvent& eve
         return false;
     }
     
-    // Numpad shortcuts for standard views (like Blender)
+    // Numpad shortcuts for standard views
     // Home key to frame all
     // Period key to frame selected
     // etc.
