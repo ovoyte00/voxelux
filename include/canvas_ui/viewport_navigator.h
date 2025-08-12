@@ -92,8 +92,6 @@ private:
     // Calculate depth factor for current view
     float calculate_depth_factor(const glm::vec3& point) const;
     
-    // Transform screen delta to world space movement
-    glm::vec3 screen_to_world_delta(const glm::vec2& screen_delta, float z_depth) const;
     
     // Apply pan transformation
     void apply_pan(const glm::vec2& delta);
@@ -104,12 +102,7 @@ private:
     // Apply zoom transformation
     void apply_zoom(float delta);
     
-    // Update camera from state
-    void sync_camera_state();
     
-    // Get view and projection matrices
-    glm::mat4 get_view_matrix() const;
-    glm::mat4 get_projection_matrix() const;
     
 private:
     Camera3D* camera_;
