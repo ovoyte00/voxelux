@@ -176,6 +176,10 @@ public:
     void set_orbit_target(const Vector3D& target);
     const Vector3D& get_orbit_target() const { return orbit_target_; }
     
+    // Get current rotation angles (for debugging)
+    float get_horizontal_angle() const { return horizontal_angle_; }
+    float get_vertical_angle() const { return vertical_angle_; }
+    
     // Projection settings
     void set_projection_type(ProjectionType type);
     ProjectionType get_projection_type() const { return projection_type_; }

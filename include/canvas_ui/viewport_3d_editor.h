@@ -85,11 +85,15 @@ private:
     bool is_orbiting_ = false;
     bool is_panning_ = false;
     bool is_zooming_ = false;
+    bool widget_dragging_ = false;  // Track if dragging from widget backdrop
+    int sphere_clicked_ = -1;  // Track which sphere was clicked (-1 = none)
+    Point2D sphere_click_pos_{0, 0};  // Position where sphere was clicked
     Point2D last_mouse_pos_{0, 0};
     
     // Viewport settings
     bool grid_visible_ = true;
     bool nav_widget_visible_ = true;
+    bool nav_handler_window_bound_ = false;
     bool show_fps_ = false;
     
     // Performance

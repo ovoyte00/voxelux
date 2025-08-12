@@ -520,6 +520,10 @@ void Camera3D::orbit_horizontal(float angle_radians) {
         
         // Update position from the new view quaternion
         update_position_from_view_quat();
+        
+        // IMPORTANT: Update the angle to reflect actual rotation
+        horizontal_angle_ += angle_radians;
+        
         mark_view_dirty();
     } else if (navigation_mode_ == NavigationMode::Orbit) {
         horizontal_angle_ += angle_radians;
@@ -546,6 +550,10 @@ void Camera3D::orbit_vertical(float angle_radians) {
         
         // Update position from the new view quaternion
         update_position_from_view_quat();
+        
+        // IMPORTANT: Update the angle to reflect actual rotation
+        vertical_angle_ += angle_radians;
+        
         mark_view_dirty();
     } else if (navigation_mode_ == NavigationMode::Orbit) {
         vertical_angle_ += angle_radians;
@@ -595,12 +603,22 @@ void Camera3D::dolly(float distance) {
 }
 
 void Camera3D::rotate_around_target(float horizontal_angle, float vertical_angle) {
+    std::cout << "[Camera3D] rotate_around_target called - h_angle=" << horizontal_angle 
+              << ", v_angle=" << vertical_angle << std::endl;
+    std::cout << "[Camera3D] Position before: " << position_.x << ", " << position_.y << ", " << position_.z << std::endl;
+    
     // Apply rotations separately for turntable navigation
     orbit_horizontal(horizontal_angle);
     orbit_vertical(vertical_angle);
+    
+    std::cout << "[Camera3D] Position after: " << position_.x << ", " << position_.y << ", " << position_.z << std::endl;
 }
 
 void Camera3D::look_at(const Vector3D& target, const Vector3D& up) {
+    std::cout << "[Camera3D] look_at called - target=(" << target.x << ", " << target.y << ", " << target.z 
+              << "), up=(" << up.x << ", " << up.y << ", " << up.z << ")" << std::endl;
+    std::cout << "[Camera3D] Position: " << position_.x << ", " << position_.y << ", " << position_.z << std::endl;
+    
     target_ = target;
     up_vector_ = up.normalized();
     

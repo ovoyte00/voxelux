@@ -11,6 +11,7 @@
 
 #include "canvas_ui/viewport_navigation_handler.h"
 #include "canvas_ui/viewport_navigator.h"
+#include "canvas_ui/canvas_window.h"
 #include <GLFW/glfw3.h>
 #include <cmath>
 #include <algorithm>
@@ -433,9 +434,20 @@ EventResult ViewportNavigationHandler::handle_event(const InputEvent& event) {
                     } else {
                         // Middle Mouse = Orbit
                         std::cout << "[NavDebug] Starting ROTATE mode (middle mouse)" << std::endl;
+                        
+                        // Store initial position for restoration
+                        drag_start_pos_ = Point2D(mouse_pos.x, mouse_pos.y);
+                        
                         navigator_->start_orbit(mouse_pos);
                         current_mode_ = NavigationMode::Orbit;
                         is_dragging_ = true;
+                        
+                        // Capture cursor for infinite dragging (Blender-style)
+                        // Following Blender's approach: ALWAYS capture cursor for rotation
+                        // The navigator will handle the initial warp properly
+                        if (window_) {
+                            window_->capture_cursor();
+                        }
                     }
                     return EventResult::HANDLED;
                 }
@@ -452,6 +464,11 @@ EventResult ViewportNavigationHandler::handle_event(const InputEvent& event) {
                     } else if (navigator_->get_mode() == voxelux::canvas_ui::ViewportNavigator::NavigationMode::ORBIT) {
                         std::cout << "[NavDebug] Ending ROTATE mode (mouse release)" << std::endl;
                         navigator_->end_orbit();
+                        
+                        // Release cursor and restore position
+                        if (window_) {
+                            window_->release_cursor();
+                        }
                     }
                     current_mode_ = NavigationMode::None;
                     is_dragging_ = false;

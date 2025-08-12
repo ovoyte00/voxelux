@@ -53,11 +53,19 @@ static void glfw_mouse_button_callback(GLFWwindow* window, int button, int actio
 static void glfw_cursor_pos_callback(GLFWwindow* window, double x, double y) {
     CanvasWindow* canvas_window = static_cast<CanvasWindow*>(glfwGetWindowUserPointer(window));
     if (canvas_window) {
-        // Only process mouse move if cursor is inside the window
-        int width, height;
-        glfwGetWindowSize(window, &width, &height);
-        if (x >= 0 && y >= 0 && x < width && y < height) {
+        // Check if cursor is captured for infinite dragging
+        int cursor_mode = glfwGetInputMode(window, GLFW_CURSOR);
+        
+        if (cursor_mode == GLFW_CURSOR_DISABLED) {
+            // When cursor is disabled, always process movement (infinite dragging)
             canvas_window->on_mouse_move(x, y);
+        } else {
+            // Only process mouse move if cursor is inside the window
+            int width, height;
+            glfwGetWindowSize(window, &width, &height);
+            if (x >= 0 && y >= 0 && x < width && y < height) {
+                canvas_window->on_mouse_move(x, y);
+            }
         }
     }
 }
@@ -325,6 +333,45 @@ void CanvasWindow::render_frame() {
     // End frame and present
     renderer_->end_frame();
     renderer_->present_frame();
+}
+
+void CanvasWindow::capture_cursor() {
+    if (window_) {
+        // Store current position before capturing
+        double x, y;
+        glfwGetCursorPos(window_, &x, &y);
+        cursor_capture_pos_ = Point2D(x, y);
+        
+        // Disable cursor (hides it and provides unlimited movement)
+        glfwSetInputMode(window_, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+        cursor_captured_ = true;
+    }
+}
+
+void CanvasWindow::release_cursor() {
+    if (window_ && cursor_captured_) {
+        // Restore normal cursor mode
+        glfwSetInputMode(window_, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+        
+        // Restore cursor to original position
+        glfwSetCursorPos(window_, cursor_capture_pos_.x, cursor_capture_pos_.y);
+        cursor_captured_ = false;
+    }
+}
+
+void CanvasWindow::set_cursor_position(double x, double y) {
+    if (window_) {
+        glfwSetCursorPos(window_, x, y);
+    }
+}
+
+Point2D CanvasWindow::get_cursor_position() const {
+    if (window_) {
+        double x, y;
+        glfwGetCursorPos(window_, &x, &y);
+        return Point2D(x, y);
+    }
+    return Point2D(0, 0);
 }
 
 void CanvasWindow::set_theme(const CanvasTheme& theme) {

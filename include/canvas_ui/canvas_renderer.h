@@ -123,6 +123,7 @@ public:
     
     // Window properties access
     float get_content_scale() const;
+    CanvasWindow* get_window() const { return window_; }
 
 private:
     // Shader and resource management

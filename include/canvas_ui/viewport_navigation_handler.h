@@ -97,6 +97,9 @@ public:
     void bind_camera(Camera3D* camera);
     // Professional Camera3D only - no legacy support
     
+    // Window binding for cursor control
+    void bind_window(class CanvasWindow* window) { window_ = window; }
+    
     // Navigation preferences
     void set_preferences(const NavigationPreferences& prefs) { prefs_ = prefs; }
     const NavigationPreferences& get_preferences() const { return prefs_; }
@@ -122,6 +125,9 @@ public:
     void start_zoom(const Point2D& start_pos);
     void start_dolly(const Point2D& start_pos);
     void end_navigation();
+    
+    // Get the internal navigator for direct access
+    voxelux::canvas_ui::ViewportNavigator* get_navigator() { return navigator_.get(); }
     
     // Debug methods
     void print_current_state() const;
@@ -182,6 +188,9 @@ private:
     // Professional Camera3D system only
     Camera3D* camera_ = nullptr;
     
+    // Window for cursor control
+    class CanvasWindow* window_ = nullptr;
+    
     // Navigation state
     NavigationMode current_mode_ = NavigationMode::None;
     InputDevice input_device_ = InputDevice::Unknown;
@@ -192,6 +201,7 @@ private:
     Point2D last_mouse_pos_{0, 0};
     Point2D accumulated_delta_{0, 0};
     bool is_dragging_ = false;
+    Point2D drag_start_pos_{0, 0};  // Initial position for cursor restoration
     
     // Viewport information
     Rect2D viewport_bounds_{0, 0, 800, 600};

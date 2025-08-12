@@ -268,6 +268,7 @@ void NavigationWidget::calculate_view_ordering(const Camera3D& camera) {
         lines[i].color = (i == 0) ? x_axis_color_ : (i == 1) ? y_axis_color_ : z_axis_color_;
         lines[i].width = line_thickness_;
         lines[i].depth = end_view.z;
+        lines[i].axis_index = i * 2; // 0 for X, 2 for Y, 4 for Z (positive axes)
         sorted_line_indices_[i] = i;
     }
     
@@ -291,21 +292,22 @@ void NavigationWidget::render(CanvasRenderer* renderer, const Camera3D& camera, 
     current_viewport_ = viewport;
     
     // Get the actual viewport size from the renderer
-    // This gives us the size that the projection matrix is set up for
+    // viewport_size is in physical/framebuffer coordinates
     Point2D viewport_size = renderer->get_viewport_size();
     float ui_scale = renderer->get_content_scale();
     
-    // Scale the widget size by UI scale factor
-    // On retina displays (scale=2), widget should be 2x larger in pixels
-    // Increase base size to 60 for better visibility
+    // Widget size in logical coordinates (what the user sees)
     widget_base_size_ = 60.0f;
-    widget_size_ = widget_base_size_ * ui_scale;
+    widget_size_ = widget_base_size_;  // Keep in logical coordinates for hit testing
     
-    // Position widget in window coordinates (top-right corner)
-    // The viewport size is already in logical/window coordinates
-    float total_size = widget_size_ * 2.0f;
-    position_.x = viewport_size.x - (margin_ * ui_scale) - total_size;
-    position_.y = margin_ * ui_scale;
+    // Position widget in logical coordinates (top-right corner)
+    // Convert viewport size to logical coordinates for positioning
+    float logical_viewport_width = viewport_size.x / ui_scale;
+    float logical_viewport_height = viewport_size.y / ui_scale;
+    
+    float total_size = widget_size_ * 2.0f;  // Total widget area size
+    position_.x = logical_viewport_width - margin_ - total_size;
+    position_.y = margin_;
     
     // Calculate depth ordering for proper layering
     calculate_view_ordering(camera);
@@ -314,8 +316,8 @@ void NavigationWidget::render(CanvasRenderer* renderer, const Camera3D& camera, 
     GLboolean blend_enabled = glIsEnabled(GL_BLEND);
     GLboolean depth_test_enabled = glIsEnabled(GL_DEPTH_TEST);
     GLint blend_src, blend_dst;
-    glGetIntegerv(GL_BLEND_SRC_ALPHA, &blend_src);
-    glGetIntegerv(GL_BLEND_DST_ALPHA, &blend_dst);
+    glGetIntegerv(GL_BLEND_SRC, &blend_src);
+    glGetIntegerv(GL_BLEND_DST, &blend_dst);
     
     // Enable blending for transparency
     glEnable(GL_BLEND);
@@ -327,9 +329,12 @@ void NavigationWidget::render(CanvasRenderer* renderer, const Camera3D& camera, 
     
     // Draw components in depth order (back to front)
     draw_widget_backdrop(renderer);
-    draw_orientation_indicators(renderer);  // Draw circles first
-    draw_axis_connectors(renderer);        // Draw lines on top of circles
-    draw_axis_text(renderer);
+    
+    // Draw each axis completely in depth order
+    for (int idx = 0; idx < NUM_AXES; idx++) {
+        int i = sorted_sphere_indices_[idx];
+        draw_single_axis(renderer, i);
+    }
     
     // Restore OpenGL state
     if (!blend_enabled) glDisable(GL_BLEND);
@@ -337,17 +342,174 @@ void NavigationWidget::render(CanvasRenderer* renderer, const Camera3D& camera, 
     glBlendFunc(blend_src, blend_dst);
 }
 
+void NavigationWidget::draw_single_axis(CanvasRenderer* renderer, int axis_index) {
+    const auto& sphere = axis_spheres_[axis_index];
+    
+    float ui_scale = renderer->get_content_scale();
+    
+    // Scale positions for physical rendering (logical -> physical)
+    Point2D scaled_position(position_.x * ui_scale, position_.y * ui_scale);
+    float scaled_widget_size = widget_size_ * ui_scale;
+    
+    // Widget center in physical coordinates
+    Point2D widget_center(scaled_position.x + scaled_widget_size, scaled_position.y + scaled_widget_size);
+    
+    // Step 1: Draw line (only for positive axes)
+    if (sphere.positive) {
+        // Find the corresponding line for this axis
+        for (const auto& line : axis_lines_) {
+            // Check if this line corresponds to this axis using the stored axis_index
+            if (line.axis_index == axis_index) {
+                // Transform endpoints to screen space (using scaled size)
+                Point2D start(widget_center.x + line.start.x * scaled_widget_size,
+                             widget_center.y - line.start.y * scaled_widget_size);
+                Point2D end(widget_center.x + line.end.x * scaled_widget_size,
+                           widget_center.y - line.end.y * scaled_widget_size);
+                
+                // Use axis color with full opacity
+                ColorRGBA line_color = line.color;
+                line_color.a = 1.0f;
+                
+                // Calculate line thickness proportional to widget size
+                float line_thickness = (widget_base_size_ / 20.0f) * ui_scale;
+                renderer->draw_line(start, end, line_color, line_thickness);
+                break;
+            }
+        }
+    }
+    
+    // Step 2: Draw sphere
+    // Calculate screen position (scale by widget radius - using physical coordinates)
+    Point2D sphere_pos(
+        widget_center.x + sphere.position.x * scaled_widget_size * 0.7f,
+        widget_center.y - sphere.position.y * scaled_widget_size * 0.7f
+    );
+    
+    // Apply depth scaling to sphere size (in physical coordinates)
+    float depth_scale = 0.9f + sphere.position.z * 0.1f;  // 0.8 to 1.0 range
+    float base_radius = 0.15f * scaled_widget_size;
+    float screen_radius = base_radius * depth_scale;
+    
+    // Apply hover scaling
+    if (axis_index == hovered_axis_) {
+        screen_radius *= 1.15f;
+    }
+    
+    if (!sphere.positive) {
+        // Negative axes - hollow sphere with ring
+        // Draw two separate circles for proper layering effect
+        
+        // Normalize depth: -axis_distance to +axis_distance becomes 0 to 1
+        float depth_factor = (sphere.depth + axis_distance_) / (2.0f * axis_distance_);
+        depth_factor = std::max(0.0f, std::min(1.0f, depth_factor));  // Clamp to [0,1]
+        
+        // Layer 1 (bottom): Background color circle
+        // Alpha goes from 0 (back) to 1 (front)
+        float bg_alpha = 0.0f;
+        if (depth_factor > 0.0f) {
+            // Smooth curve that reaches 1.0 at about 95% to front
+            bg_alpha = std::pow(depth_factor, 0.3f);  // Power < 1 makes it rise faster
+            bg_alpha = std::min(1.0f, bg_alpha * 1.1f);  // Ensure it reaches 1.0
+        }
+        
+        // Draw background circle if it has any opacity
+        if (bg_alpha > 0.001f) {
+            ColorRGBA bg_color = viewport_bg_;
+            bg_color.a = bg_alpha;
+            render_filled_circle(renderer, sphere_pos, screen_radius - 2.0f, bg_color);
+        }
+        
+        // Layer 2 (top): Axis color circle at constant 0.3 alpha
+        ColorRGBA axis_color = sphere.color;
+        axis_color.a = 0.3f;
+        render_filled_circle(renderer, sphere_pos, screen_radius - 2.0f, axis_color);
+        
+        // Solid colored ring outline
+        ColorRGBA ring_color = sphere.color;
+        ring_color.a = 1.0f;
+        render_ring_shape(renderer, sphere_pos, screen_radius, ring_color, 2.0f);
+    } else {
+        // Positive axes - solid filled sphere
+        ColorRGBA sphere_color = sphere.color;
+        sphere_color.a = 1.0f;
+        
+        // No color enhancement on hover - just size increase
+        
+        render_filled_circle(renderer, sphere_pos, screen_radius, sphere_color);
+    }
+    
+    // Step 3: Draw text
+    if (!g_font_system) {
+        return;
+    }
+    
+    // For negative axes, only show text on hover
+    if (!sphere.positive && axis_index != hovered_axis_) {
+        return;
+    }
+    
+    // Create label text
+    std::string label;
+    if (sphere.axis == 0) label = "X";
+    else if (sphere.axis == 1) label = "Y";
+    else if (sphere.axis == 2) label = "Z";
+    
+    // Negative axes show minus
+    if (!sphere.positive) {
+        label = "-" + label;
+    }
+    
+    // Calculate font size proportional to sphere size with depth scaling
+    // Note: base_radius is already in physical coordinates
+    float sphere_screen_radius = base_radius * depth_scale;
+    float font_size = sphere_screen_radius * 1.25f;
+    
+    Point2D text_size = g_font_system->measure_text(label, "Inter-Bold", font_size);
+    
+    // Center text position
+    Point2D text_pos(
+        std::round(sphere_pos.x - text_size.x / 2),
+        std::round(sphere_pos.y - text_size.y / 2)
+    );
+    
+    // Determine text color based on hover state
+    ColorRGBA text_color;
+    if (axis_index == hovered_axis_) {
+        // White text on hover (for both positive and negative)
+        text_color = ColorRGBA(1.0f, 1.0f, 1.0f, 1.0f);
+    } else if (sphere.positive) {
+        // Black text for non-hovered positive axes
+        text_color = ColorRGBA(0.0f, 0.0f, 0.0f, 1.0f);
+    } else {
+        // White text for negative axes (only visible on hover anyway)
+        text_color = ColorRGBA(1.0f, 1.0f, 1.0f, 1.0f);
+    }
+    
+    g_font_system->render_text(renderer, label, text_pos, "Inter-Bold", font_size, text_color);
+}
+
 void NavigationWidget::draw_widget_backdrop(CanvasRenderer* renderer) {
-    // Draw circular backdrop when widget is interactive
-    if (is_active_ || hovered_axis_ >= 0) {
-        // Widget center is at position + radius (since position is top-left)
-        Point2D center(position_.x + widget_size_, position_.y + widget_size_);
+    // Draw circular backdrop when mouse is within widget area OR when dragging
+    if (mouse_in_widget_ || is_dragging_) {
+        float ui_scale = renderer->get_content_scale();
         
-        // Use highlight color when hovering, standard backdrop otherwise
-        ColorRGBA backdrop = (hovered_axis_ >= 0) ? highlight_backdrop_ : backdrop_color_;
+        // Scale positions for physical rendering
+        Point2D scaled_position(position_.x * ui_scale, position_.y * ui_scale);
+        float scaled_widget_size = widget_size_ * ui_scale;
         
-        // Draw smooth circular backdrop (full widget radius)
-        render_filled_circle(renderer, center, widget_size_, backdrop);
+        // Widget center in physical coordinates
+        Point2D center(scaled_position.x + scaled_widget_size, scaled_position.y + scaled_widget_size);
+        
+        // Use single backdrop color (can adjust alpha here if needed)
+        ColorRGBA backdrop = highlight_backdrop_;
+        
+        // Calculate actual content radius
+        // Spheres are at axis_distance * 0.7 from center, with radius 0.15
+        // Add a small margin for visual comfort
+        float content_radius = (axis_distance_ * 0.7f + 0.15f + 0.05f) * scaled_widget_size;
+        
+        // Draw smooth circular backdrop matching actual widget content size
+        render_filled_circle(renderer, center, content_radius, backdrop);
     }
 }
 
@@ -394,9 +556,14 @@ void NavigationWidget::draw_orientation_indicators(CanvasRenderer* renderer) {
             widget_center.y - sphere.position.y * widget_size_ * 0.7f
         );
         
-            // Fixed size for all spheres, no depth scaling
-        // Sphere radius should be about 15% of widget radius for good proportions
-        float screen_radius = 0.15f * widget_size_;
+        // Apply depth scaling to sphere size
+        // Spheres in front (positive z) are full size, spheres in back are smaller
+        // Z ranges from -1 to 1, we want size scale from 0.8 to 1.0
+        float depth_scale = 0.9f + sphere.position.z * 0.1f;  // 0.8 to 1.0 range
+        
+        // Sphere radius with depth scaling
+        float base_radius = 0.15f * widget_size_;
+        float screen_radius = base_radius * depth_scale;
         
         // Apply hover scaling
         if (i == hovered_axis_) {
@@ -427,12 +594,12 @@ void NavigationWidget::draw_orientation_indicators(CanvasRenderer* renderer) {
             }
             
             // Fill interior
-            render_filled_circle(renderer, sphere_pos, screen_radius - 3.0f, interior_color);
+            render_filled_circle(renderer, sphere_pos, screen_radius - 2.0f, interior_color);
             
             // Solid colored ring outline
             ColorRGBA ring_color = sphere.color;
             ring_color.a = 1.0f;  // Always full opacity for outline
-            render_ring_shape(renderer, sphere_pos, screen_radius, ring_color, 3.0f);
+            render_ring_shape(renderer, sphere_pos, screen_radius, ring_color, 2.0f);
         } else {
             // Positive axes - solid filled sphere, no depth effects
             ColorRGBA sphere_color = sphere.color;
@@ -485,10 +652,10 @@ void NavigationWidget::draw_axis_text(CanvasRenderer* renderer) {
             label = "-" + label;
         }
         
-        // Calculate font size proportional to sphere size
-        // Use sphere radius * 1.25 for good readability
-        // Our sphere radius is 0.15f * widget_size_, so text should be proportional
-        float sphere_screen_radius = 0.15f * widget_size_;
+        // Calculate font size proportional to sphere size with depth scaling
+        // Apply the same depth scaling as the sphere rendering
+        float depth_scale = 0.9f + sphere.position.z * 0.1f;  // 0.8 to 1.0 range
+        float sphere_screen_radius = 0.15f * widget_size_ * depth_scale;
         float font_size = sphere_screen_radius * 1.25f;  // Proportional to sphere size
         
         Point2D text_size = g_font_system->measure_text(label, "Inter-Bold", font_size);
@@ -528,10 +695,26 @@ int NavigationWidget::hit_test(const Point2D& mouse_pos) const {
     // Widget center is at position + radius
     Point2D widget_center(position_.x + widget_size_, position_.y + widget_size_);
     
-    // Check if mouse is within widget bounds
+    // Debug output
+    static int debug_counter = 0;
+    if (++debug_counter % 30 == 0) {  // Only print every 30th call to avoid spam
+        std::cout << "[NAV WIDGET] Hit test - mouse: (" << mouse_pos.x << ", " << mouse_pos.y 
+                  << "), widget center: (" << widget_center.x << ", " << widget_center.y 
+                  << "), widget_size: " << widget_size_ 
+                  << " (logical coords)" << std::endl;
+    }
+    
+    // Check if mouse is within backdrop bounds for hover detection
     float dx = mouse_pos.x - widget_center.x;
     float dy = mouse_pos.y - widget_center.y;
     float dist_from_center = std::sqrt(dx * dx + dy * dy);
+    
+    // Calculate backdrop radius (same as in draw_widget_backdrop but in logical coords)
+    float backdrop_radius = (axis_distance_ * 0.7f + 0.15f + 0.05f) * widget_size_;
+    
+    // Update whether mouse is in widget area (for backdrop display)
+    // This is mutable so we can update it from a const method
+    mouse_in_widget_ = (dist_from_center <= backdrop_radius);
     
     if (dist_from_center > widget_size_) {
         return -1;
@@ -555,12 +738,17 @@ int NavigationWidget::hit_test(const Point2D& mouse_pos) const {
         float sdy = mouse_pos.y - sphere_pos.y;
         float dist = std::sqrt(sdx * sdx + sdy * sdy);
         
-        // Hit radius is slightly larger than visual radius for easier clicking
-        float hit_radius = sphere_radius_ * widget_size_ * 1.2f;
+        // Apply depth scaling to hit radius (same as rendering)
+        float depth_scale = 0.9f + sphere.position.z * 0.1f;  // 0.8 to 1.0 range
+        // Use same base radius as rendering (0.15f) but slightly larger for easier clicking
+        float base_radius = 0.15f * widget_size_;
+        float hit_radius = base_radius * depth_scale * 1.3f;  // 1.3x for easier clicking
         
         if (dist < hit_radius && dist < closest_dist) {
             closest_dist = dist;
             closest_sphere = i;
+            std::cout << "[NAV WIDGET] Hit sphere " << i << " at distance " << dist 
+                      << " (hit_radius: " << hit_radius << ")" << std::endl;
         }
     }
     
@@ -568,20 +756,47 @@ int NavigationWidget::hit_test(const Point2D& mouse_pos) const {
 }
 
 void NavigationWidget::handle_click(int axis_id) {
+    std::cout << "[NAV WIDGET] handle_click called with axis_id: " << axis_id << std::endl;
+    
     if (axis_id < 0 || axis_id >= NUM_AXES) {
         return;
     }
     
     const auto& sphere = axis_spheres_[axis_id];
     
+    std::cout << "[NAV WIDGET] Clicked axis " << sphere.axis 
+              << (sphere.positive ? " (positive)" : " (negative)") << std::endl;
+    
     // Call the callback if set
     if (axis_click_callback_) {
+        std::cout << "[NAV WIDGET] Calling axis_click_callback" << std::endl;
         axis_click_callback_(sphere.axis, sphere.positive);
+    } else {
+        std::cout << "[NAV WIDGET] No axis_click_callback set!" << std::endl;
     }
 }
 
 void NavigationWidget::set_hover_axis(int axis_id) {
     hovered_axis_ = axis_id;
+}
+
+bool NavigationWidget::is_point_in_widget(const Point2D& point) const {
+    if (!visible_) {
+        return false;
+    }
+    
+    // Widget center is at position + radius
+    Point2D widget_center(position_.x + widget_size_, position_.y + widget_size_);
+    
+    // Check if point is within backdrop bounds
+    float dx = point.x - widget_center.x;
+    float dy = point.y - widget_center.y;
+    float dist_from_center = std::sqrt(dx * dx + dy * dy);
+    
+    // Calculate backdrop radius (same as in draw_widget_backdrop but in logical coords)
+    float backdrop_radius = (axis_distance_ * 0.7f + 0.15f + 0.05f) * widget_size_;
+    
+    return dist_from_center <= backdrop_radius;
 }
 
 // Custom rendering utilities implementation

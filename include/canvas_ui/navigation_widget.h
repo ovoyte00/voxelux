@@ -51,6 +51,11 @@ public:
     void handle_click(int axis_id);
     void set_hover_axis(int axis_id);
     
+    // Dragging state management
+    void set_dragging(bool dragging) { is_dragging_ = dragging; }
+    bool is_dragging() const { return is_dragging_; }
+    bool is_point_in_widget(const Point2D& point) const;  // Check if point is within widget backdrop
+    
     // Configuration
     void set_position(const Point2D& pos) { position_ = pos; }
     void set_size(float size) { widget_size_ = size; }
@@ -60,6 +65,7 @@ public:
     // Callbacks
     using AxisClickCallback = std::function<void(int axis, bool positive)>;
     void set_axis_click_callback(AxisClickCallback callback) { axis_click_callback_ = callback; }
+    AxisClickCallback get_axis_click_callback() const { return axis_click_callback_; }
     
 private:
     // Axis sphere data
@@ -79,11 +85,13 @@ private:
         ColorRGBA color;
         float width;
         float depth;
+        int axis_index;  // Which axis this line belongs to (0=+X, 2=+Y, 4=+Z)
     };
     
     // Rendering pipeline stages
     void calculate_view_ordering(const Camera3D& camera);
     void draw_widget_backdrop(CanvasRenderer* renderer);
+    void draw_single_axis(CanvasRenderer* renderer, int axis_index);
     void draw_axis_connectors(CanvasRenderer* renderer);
     void draw_orientation_indicators(CanvasRenderer* renderer);
     void draw_axis_text(CanvasRenderer* renderer);
@@ -116,6 +124,8 @@ private:
     // Interaction state
     int hovered_axis_ = -1;
     bool is_active_ = false;
+    mutable bool mouse_in_widget_ = false;  // Mutable for updating in const hit_test
+    bool is_dragging_ = false;  // Track if we're currently dragging from widget
     
     // Axis configuration
     static constexpr int NUM_AXES = 6;  // +X, -X, +Y, -Y, +Z, -Z

@@ -225,10 +225,36 @@ void ViewportNavigator::update_orbit(const glm::vec2& mouse_pos, float delta_tim
     
     // Calculate mouse delta
     glm::vec2 delta = mouse_pos - state_.last_mouse_pos;
+    
+    // Handle cursor warp: If we get a huge jump (cursor captured and warped to center),
+    // reset the reference point without applying rotation
+    const float WARP_THRESHOLD = 200.0f;  // Pixels - any jump larger than this is likely a warp
+    if (glm::length(delta) > WARP_THRESHOLD) {
+        std::cout << "[ViewportNavigator] Detected cursor warp - resetting reference (delta: " 
+                  << glm::length(delta) << ")" << std::endl;
+        state_.last_mouse_pos = mouse_pos;
+        return;  // Skip this update
+    }
+    
+    // Debug first few updates
+    static int update_count = 0;
+    update_count++;
+    if (update_count <= 3) {
+        std::cout << "[ViewportNavigator] update_orbit #" << update_count << std::endl;
+        std::cout << "  Mouse pos: (" << mouse_pos.x << ", " << mouse_pos.y << ")" << std::endl;
+        std::cout << "  Last pos: (" << state_.last_mouse_pos.x << ", " << state_.last_mouse_pos.y << ")" << std::endl;
+        std::cout << "  Raw delta: (" << delta.x << ", " << delta.y << ")" << std::endl;
+        std::cout << "  Sensitivity: " << orbit_sensitivity_mouse_ << ", UI scale: " << ui_scale_ << std::endl;
+    }
+    
     state_.last_mouse_pos = mouse_pos;
     
     // Apply sensitivity with UI scale compensation (divide by scale for HiDPI)
     delta *= orbit_sensitivity_mouse_ / ui_scale_;
+    
+    if (update_count <= 3) {
+        std::cout << "  Scaled delta: (" << delta.x << ", " << delta.y << ")" << std::endl;
+    }
     
     // Update momentum
     state_.orbit_momentum = state_.orbit_momentum * 0.8f + delta * 0.2f;
@@ -290,13 +316,18 @@ void ViewportNavigator::apply_orbit(const glm::vec2& delta) {
     float horizontal_angle = -delta.x * 0.01f;  // Convert to radians
     float vertical_angle = -delta.y * 0.01f;    // Convert to radians
     
-    // Debug output
-    static int orbit_debug = 0;
-    if (++orbit_debug % 10 == 0) {
-        std::cout << "[ORBIT DEBUG]" << std::endl;
+    // Debug output - ALWAYS show for first few calls
+    static int orbit_call_count = 0;
+    orbit_call_count++;
+    if (orbit_call_count <= 5 || orbit_call_count % 10 == 0) {
+        std::cout << "[ORBIT DEBUG] Call #" << orbit_call_count << std::endl;
         std::cout << "  Delta: (" << delta.x << ", " << delta.y << ")" << std::endl;
         std::cout << "  Horizontal angle: " << glm::degrees(horizontal_angle) << " degrees" << std::endl;
         std::cout << "  Vertical angle: " << glm::degrees(vertical_angle) << " degrees" << std::endl;
+        
+        // Show camera's current angles
+        std::cout << "  Camera h_angle before: " << camera_->get_horizontal_angle() << " rad" << std::endl;
+        std::cout << "  Camera v_angle before: " << camera_->get_vertical_angle() << " rad" << std::endl;
     }
     
     // Store old state for debugging
@@ -316,7 +347,7 @@ void ViewportNavigator::apply_orbit(const glm::vec2& delta) {
     state_.orbit_center = state_.camera_target; // Keep orbit center at target
     
     // Debug: show actual change
-    if (orbit_debug % 10 == 0) {
+    if (orbit_call_count <= 5 || orbit_call_count % 10 == 0) {
         std::cout << "  Camera moved from: (" << old_position.x << ", " 
                   << old_position.y << ", " << old_position.z << ")" << std::endl;
         std::cout << "  Camera moved to: (" << new_position.x << ", " 

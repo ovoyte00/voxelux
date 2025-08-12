@@ -72,9 +72,15 @@ void Viewport3DEditor::update(float delta_time) {
 }
 
 void Viewport3DEditor::render(CanvasRenderer* renderer, const Rect2D& bounds) {
-    // Update navigation handler with current UI scale
+    // Update navigation handler with current UI scale and bind window if needed
     if (nav_handler_) {
         nav_handler_->set_ui_scale(renderer->get_content_scale());
+        
+        // Bind window for cursor control (only once)
+        if (!nav_handler_window_bound_) {
+            nav_handler_->bind_window(renderer->get_window());
+            nav_handler_window_bound_ = true;
+        }
     }
     
     // Clear the viewport with theme background color
@@ -117,18 +123,132 @@ void Viewport3DEditor::render_overlay(CanvasRenderer* renderer, const Rect2D& bo
 }
 
 bool Viewport3DEditor::handle_event(const InputEvent& event, const Rect2D& bounds) {
-    // Check navigation widget interaction first
+    // FIRST: Block any trackpad gestures if we have a pending sphere click
+    // This must happen before ANY other processing
+    if (sphere_clicked_ >= 0) {
+        if (event.type == EventType::TRACKPAD_ROTATE || 
+            event.type == EventType::TRACKPAD_SCROLL ||
+            event.type == EventType::TRACKPAD_PAN ||
+            event.type == EventType::TRACKPAD_ZOOM) {
+            std::cout << "[Widget] EARLY BLOCK - trackpad gesture (type=" << static_cast<int>(event.type) 
+                      << ") blocked due to sphere " << sphere_clicked_ << " click pending" << std::endl;
+            return true; // Consume to prevent any processing
+        }
+    }
+    
+    // Check navigation widget interaction
     if (nav_widget_visible_ && nav_widget_) {
         if (event.type == EventType::MOUSE_MOVE) {
             // Update hover state
             int hovered = nav_widget_->hit_test(event.mouse_pos);
             nav_widget_->set_hover_axis(hovered);
+            
+            // Check if we've started dragging from a sphere click
+            if (sphere_clicked_ >= 0) {
+                // Calculate distance from original click position
+                float dx = event.mouse_pos.x - sphere_click_pos_.x;
+                float dy = event.mouse_pos.y - sphere_click_pos_.y;
+                float drag_threshold = 5.0f; // pixels
+                
+                if (dx * dx + dy * dy > drag_threshold * drag_threshold) {
+                    std::cout << "[Widget] Sphere drag detected - converting to orbit" << std::endl;
+                    std::cout << "[Widget] Current mouse pos: " << event.mouse_pos.x << ", " << event.mouse_pos.y << std::endl;
+                    std::cout << "[Widget] Original click pos: " << sphere_click_pos_.x << ", " << sphere_click_pos_.y << std::endl;
+                    std::cout << "[Widget] Camera pos at drag start: " << camera_.get_position().x << ", " 
+                              << camera_.get_position().y << ", " << camera_.get_position().z << std::endl;
+                    
+                    // User is dragging - convert to rotation
+                    sphere_clicked_ = -1; // Clear sphere click FIRST to prevent any callbacks
+                    widget_dragging_ = true; // Set this flag to track widget dragging
+                    nav_widget_->set_dragging(true); // Keep backdrop visible during drag
+                    
+                    // Simulate middle mouse press to start orbit
+                    // The navigation handler will set is_dragging_ = true
+                    InputEvent orbit_event = event;
+                    orbit_event.type = EventType::MOUSE_PRESS;
+                    orbit_event.mouse_button = MouseButton::MIDDLE;
+                    orbit_event.mouse_pos = event.mouse_pos;
+                    
+                    // The handler will check if we're near the widget to avoid cursor capture
+                    
+                    if (nav_handler_) {
+                        nav_handler_->handle_event(orbit_event);
+                    }
+                    
+                    return true;
+                }
+                // While waiting to detect click vs drag on sphere, consume move events
+                return true;
+            }
+            
+            // If we're dragging from the widget, continue the rotation
+            if (widget_dragging_) {
+                // Simulate middle mouse drag for the navigation handler
+                InputEvent orbit_event = event;
+                orbit_event.mouse_button = MouseButton::MIDDLE;
+                
+                if (nav_handler_) {
+                    nav_handler_->handle_event(orbit_event);
+                }
+                return true;
+            }
         } else if (event.type == EventType::MOUSE_PRESS && event.mouse_button == MouseButton::LEFT) {
-            // Check for widget click
-            int clicked = nav_widget_->hit_test(event.mouse_pos);
-            if (clicked >= 0) {
-                nav_widget_->handle_click(clicked);
+            // First check if we clicked on a sphere
+            int clicked_sphere = nav_widget_->hit_test(event.mouse_pos);
+            if (clicked_sphere >= 0) {
+                // Clicked on a sphere - store for potential drag detection
+                std::cout << "[Widget] Sphere " << clicked_sphere << " clicked - waiting to detect click vs drag" << std::endl;
+                sphere_clicked_ = clicked_sphere;
+                sphere_click_pos_ = event.mouse_pos;
                 return true; // Consume event
+            }
+            
+            // Check if click is within widget backdrop (but not on sphere)
+            if (nav_widget_->is_point_in_widget(event.mouse_pos)) {
+                // Start widget dragging for rotation immediately
+                widget_dragging_ = true;
+                nav_widget_->set_dragging(true); // Keep backdrop visible during drag
+                
+                // Create a fake middle mouse press event to start orbit
+                InputEvent orbit_event = event;
+                orbit_event.mouse_button = MouseButton::MIDDLE;
+                
+                if (nav_handler_) {
+                    nav_handler_->handle_event(orbit_event);
+                }
+                return true; // Consume event
+            }
+        } else if (event.type == EventType::MOUSE_RELEASE && event.mouse_button == MouseButton::LEFT) {
+            // Check if we're releasing a sphere click (not a drag)
+            if (sphere_clicked_ >= 0) {
+                // This was a click on a sphere - trigger the axis view
+                int axis = sphere_clicked_ / 2;  // 0,1 = X, 2,3 = Y, 4,5 = Z
+                bool positive = (sphere_clicked_ % 2) == 0;
+                
+                std::cout << "[Widget] Sphere click released - setting axis view (axis=" << axis << ", positive=" << positive << ")" << std::endl;
+                
+                // Trigger the axis click callback
+                if (nav_widget_->get_axis_click_callback()) {
+                    nav_widget_->get_axis_click_callback()(axis, positive);
+                }
+                
+                sphere_clicked_ = -1; // Clear the click
+                return true;
+            }
+            
+            // End widget dragging
+            if (widget_dragging_) {
+                widget_dragging_ = false;
+                nav_widget_->set_dragging(false); // Allow backdrop to hide when done
+                
+                // Simulate middle mouse release to end orbit
+                InputEvent orbit_event = event;
+                orbit_event.mouse_button = MouseButton::MIDDLE;
+                
+                if (nav_handler_) {
+                    nav_handler_->handle_event(orbit_event);
+                }
+                return true;
             }
         }
     }
@@ -218,9 +338,13 @@ void Viewport3DEditor::setup_nav_widget() {
     } else {
         // Set up axis click callback
         nav_widget_->set_axis_click_callback([this](int axis, bool positive) {
-            // Handle axis clicks to set standard orthographic views
+            // Handle axis clicks to set standard views (keep current projection type)
             // Using right-handed coordinate system: +Y up, +X right, +Z towards viewer
-            camera_.set_projection_type(Camera3D::ProjectionType::Orthographic);
+            // Note: Orthographic is a separate toggle, not triggered by navigation
+            std::cout << "[Widget] Axis click callback triggered - axis=" << axis << ", positive=" << positive << std::endl;
+            std::cout << "[Widget] Camera position BEFORE: " << camera_.get_position().x << ", " 
+                      << camera_.get_position().y << ", " << camera_.get_position().z << std::endl;
+            
             float view_distance = 60.0f;
             
             if (axis == 0) { // X axis - Right/Left view
@@ -236,6 +360,9 @@ void Viewport3DEditor::setup_nav_widget() {
                 camera_.set_position(Vector3D(0, 0, positive ? view_distance : -view_distance));
                 camera_.look_at(Vector3D(0, 0, 0), Vector3D(0, 1, 0)); // Y is up
             }
+            
+            std::cout << "[Widget] Camera position AFTER: " << camera_.get_position().x << ", " 
+                      << camera_.get_position().y << ", " << camera_.get_position().z << std::endl;
         });
     }
 }
@@ -263,6 +390,19 @@ void Viewport3DEditor::render_grid(CanvasRenderer* renderer, const Rect2D& bound
 bool Viewport3DEditor::handle_camera_navigation(const InputEvent& event, const Rect2D& bounds) {
     if (!nav_handler_) {
         return false;
+    }
+    
+    // Clear any pending sphere click if user starts navigating with middle mouse or trackpad
+    if ((event.type == EventType::MOUSE_PRESS && event.mouse_button == MouseButton::MIDDLE) ||
+        event.type == EventType::TRACKPAD_ROTATE ||
+        event.type == EventType::TRACKPAD_PAN ||
+        event.type == EventType::TRACKPAD_ZOOM ||
+        (event.type == EventType::TRACKPAD_SCROLL && 
+         (event.has_modifier(KeyModifier::SHIFT) || event.has_modifier(KeyModifier::CMD) || event.has_modifier(KeyModifier::CTRL)))) {
+        if (sphere_clicked_ >= 0) {
+            std::cout << "[Widget] Clearing sphere click - user started navigation" << std::endl;
+            sphere_clicked_ = -1;  // Clear pending sphere click
+        }
     }
     
     // Debug: Only log important events

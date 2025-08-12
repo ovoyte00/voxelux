@@ -63,6 +63,12 @@ public:
     // System access
     GLFWwindow* get_glfw_handle() const { return window_; }
     
+    // Cursor control for infinite mouse dragging
+    void capture_cursor();  // Hide cursor and enable unlimited movement
+    void release_cursor();  // Show cursor and restore normal behavior
+    void set_cursor_position(double x, double y);  // Set cursor position
+    Point2D get_cursor_position() const;  // Get current cursor position
+    
     // Theme management
     void set_theme(const CanvasTheme& theme);
     const CanvasTheme& get_theme() const { return theme_; }
@@ -105,6 +111,10 @@ private:
     uint32_t keyboard_modifiers_ = 0;
     bool natural_scroll_direction_ = false; // Smart mouse/trackpad scroll direction
     double scroll_ignore_until_ = 0.0; // Timestamp until which to ignore scroll events
+    
+    // Cursor capture state for infinite dragging
+    bool cursor_captured_ = false;
+    Point2D cursor_capture_pos_{0, 0};
     
     // Gesture tracking to prevent event type changes mid-gesture
     enum class GestureType {

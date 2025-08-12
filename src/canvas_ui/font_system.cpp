@@ -395,8 +395,8 @@ void FontSystem::render_text(CanvasRenderer* renderer, const std::string& text,
     // Save OpenGL state
     GLboolean blend_enabled = glIsEnabled(GL_BLEND);
     GLint blend_src, blend_dst;
-    glGetIntegerv(GL_BLEND_SRC_ALPHA, &blend_src);
-    glGetIntegerv(GL_BLEND_DST_ALPHA, &blend_dst);
+    glGetIntegerv(GL_BLEND_SRC, &blend_src);
+    glGetIntegerv(GL_BLEND_DST, &blend_dst);
     
     // Enable blending for text
     glEnable(GL_BLEND);
