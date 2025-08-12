@@ -50,6 +50,10 @@ void ViewportNavigator::set_viewport_size(int width, int height) {
     viewport_height_ = height;
 }
 
+void ViewportNavigator::set_ui_scale(float scale) {
+    ui_scale_ = scale;
+}
+
 float ViewportNavigator::calculate_depth_factor(const glm::vec3& point) const {
     // Project point through view-projection matrix to get depth
     glm::mat4 view = get_view_matrix();
@@ -76,50 +80,34 @@ float ViewportNavigator::calculate_depth_factor(const glm::vec3& point) const {
 }
 
 glm::vec3 ViewportNavigator::screen_to_world_delta(const glm::vec2& screen_delta, float z_depth) const {
-    // Build view matrix and extract camera vectors
+    // Industry-standard approach: Transform screen delta through inverse matrices
+    // Step 1: Normalize screen coordinates to [-1, 1] range (NDC)
+    float normalized_x = 2.0f * screen_delta.x * z_depth / viewport_width_;
+    float normalized_y = 2.0f * screen_delta.y * z_depth / viewport_height_;
+    
+    // Step 2: Get projection and view matrices
+    glm::mat4 projection = get_projection_matrix();
     glm::mat4 view = get_view_matrix();
     
-    // The view matrix transforms from world to camera space
-    // Its transpose (or inverse for orthonormal matrices) gives us camera to world
-    // The columns of the inverse are the camera's basis vectors in world space
+    // Step 3: Compute inverse of projection matrix for unprojection
+    glm::mat4 proj_inv = glm::inverse(projection);
+    
+    // Step 4: Create a vector in clip space (using normalized coords)
+    // We use w=0 because we're transforming a direction, not a position
+    glm::vec4 clip_delta(normalized_x, normalized_y, 0.0f, 0.0f);
+    
+    // Step 5: Transform from clip space to view space
+    glm::vec4 view_delta = proj_inv * clip_delta;
+    
+    // Step 6: Transform from view space to world space
     glm::mat4 view_inv = glm::inverse(view);
+    glm::vec4 world_delta_4 = view_inv * view_delta;
     
-    // Extract camera basis vectors
-    // Column 0: Right vector in world space
-    // Column 1: Up vector in world space
-    // Column 2: Back vector in world space (-forward)
-    glm::vec3 cam_right = glm::vec3(view_inv[0]);
-    glm::vec3 cam_up = glm::vec3(view_inv[1]);
+    // Step 7: Extract the 3D delta
+    glm::vec3 world_delta(world_delta_4.x, world_delta_4.y, world_delta_4.z);
     
-    // Debug output
-    static int debug_counter = 0;
-    if (debug_counter++ % 30 == 0 && glm::length(screen_delta) > 0.1f) {
-        glm::vec3 cam_back = glm::vec3(view_inv[2]);
-        glm::vec3 forward = glm::normalize(state_.camera_target - state_.camera_position);
-        std::cout << "\n[screen_to_world] Screen delta: (" << screen_delta.x << ", " << screen_delta.y << ")" << std::endl;
-        std::cout << "  Camera pos: (" << state_.camera_position.x << ", " << state_.camera_position.y << ", " << state_.camera_position.z << ")" << std::endl;
-        std::cout << "  Camera target: (" << state_.camera_target.x << ", " << state_.camera_target.y << ", " << state_.camera_target.z << ")" << std::endl;
-        std::cout << "  Forward (from pos->target): (" << forward.x << ", " << forward.y << ", " << forward.z << ")" << std::endl;
-        std::cout << "  Camera right (from matrix): (" << cam_right.x << ", " << cam_right.y << ", " << cam_right.z << ")" << std::endl;
-        std::cout << "  Camera up (from matrix): (" << cam_up.x << ", " << cam_up.y << ", " << cam_up.z << ")" << std::endl;
-        std::cout << "  Camera back (from matrix): (" << cam_back.x << ", " << cam_back.y << ", " << cam_back.z << ")" << std::endl;
-    }
-    
-    // Calculate the scale factor based on FOV and depth
-    float aspect = static_cast<float>(viewport_width_) / viewport_height_;
-    float fov_rad = glm::radians(state_.fov);
-    float scale_factor = 2.0f * z_depth * std::tan(fov_rad * 0.5f);
-    
-    // Convert screen pixels to world units
-    // Trackpad gives us: +X = right, +Y = up (already in correct orientation)
-    // We want: pan right = move right, pan up = move up
-    float world_dx = (screen_delta.x / viewport_width_) * scale_factor * aspect;
-    float world_dy = (screen_delta.y / viewport_height_) * scale_factor;  // Don't negate - trackpad Y is already correct
-    
-    // Apply movement along camera axes
-    glm::vec3 world_delta = cam_right * world_dx + cam_up * world_dy;
-    
-    return world_delta;
+    // Step 8: Negate for drag behavior (drag right = world moves left)
+    return -world_delta;
 }
 
 void ViewportNavigator::start_pan(const glm::vec2& mouse_pos) {
@@ -130,6 +118,8 @@ void ViewportNavigator::start_pan(const glm::vec2& mouse_pos) {
     // Clear orbit momentum when starting pan
     state_.orbit_momentum = glm::vec2(0.0f);
     state_.zoom_momentum = 0.0f;
+    // Reset smoothing for new gesture
+    state_.pan_smooth = glm::vec2(0.0f);
 }
 
 void ViewportNavigator::update_pan(const glm::vec2& mouse_pos, float delta_time) {
@@ -139,16 +129,16 @@ void ViewportNavigator::update_pan(const glm::vec2& mouse_pos, float delta_time)
     glm::vec2 delta = mouse_pos - state_.last_mouse_pos;
     state_.last_mouse_pos = mouse_pos;
     
-    // Apply sensitivity
-    delta *= pan_sensitivity_;
+    // Apply sensitivity with UI scale compensation (divide by scale for HiDPI)
+    glm::vec2 scaled_delta = delta * pan_sensitivity_ / ui_scale_;
     
     // For very small movements, apply directly without momentum
-    if (glm::length(delta) < 2.0f) {
+    if (glm::length(scaled_delta) < 2.0f) {
         // Direct application for fine control
-        apply_pan(delta);
+        apply_pan(scaled_delta);
     } else {
         // Update momentum for larger movements (smooth out movement)
-        state_.pan_momentum = state_.pan_momentum * 0.7f + delta * 0.3f;
+        state_.pan_momentum = state_.pan_momentum * 0.7f + scaled_delta * 0.3f;
         apply_pan(state_.pan_momentum);
     }
 }
@@ -156,24 +146,42 @@ void ViewportNavigator::update_pan(const glm::vec2& mouse_pos, float delta_time)
 void ViewportNavigator::update_pan_delta(const glm::vec2& delta, float delta_time) {
     if (state_.mode != NavigationMode::PAN) return;
     
-    // Apply sensitivity directly to delta
-    glm::vec2 scaled_delta = delta * pan_sensitivity_;
+    // Apply sensitivity with UI scale compensation (divide by scale for HiDPI)
+    glm::vec2 scaled_delta = delta * pan_sensitivity_ / ui_scale_;
     
-    // Debug output
-    static int debug_counter = 0;
-    if (debug_counter++ % 30 == 0 && glm::length(delta) > 0.1f) {
-        std::cout << "[Pan Delta] Input: (" << delta.x << ", " << delta.y 
-                  << ") Scaled: (" << scaled_delta.x << ", " << scaled_delta.y << ")" << std::endl;
+    // Hybrid smoothing approach (same as orbit)
+    static glm::vec2 target_velocity(0.0f);
+    static bool was_panning = false;
+    
+    if (!was_panning) {
+        target_velocity = glm::vec2(0.0f);
+        was_panning = true;
     }
     
-    // For trackpad, we get the delta directly, so just apply it
-    apply_pan(scaled_delta);
+    // Accumulate with decay
+    target_velocity = target_velocity * 0.4f + scaled_delta * 0.6f;
+    
+    // Smooth interpolation
+    const float smoothing_factor = 0.6f;
+    state_.pan_smooth = glm::mix(state_.pan_smooth, target_velocity, smoothing_factor);
+    
+    // Apply the smoothed delta
+    apply_pan(state_.pan_smooth);
+    
+    if (state_.mode != NavigationMode::PAN) {
+        was_panning = false;
+        target_velocity = glm::vec2(0.0f);
+    }
 }
 
 void ViewportNavigator::end_pan() {
     if (state_.mode == NavigationMode::PAN) {
         state_.mode = NavigationMode::NONE;
-        state_.has_momentum = true;
+        // Disable momentum for pan to prevent drift
+        state_.pan_momentum = glm::vec2(0.0f);
+        state_.has_momentum = false;
+        // Clear smoothing when ending gesture
+        state_.pan_smooth = glm::vec2(0.0f);
     }
 }
 
@@ -183,17 +191,6 @@ void ViewportNavigator::apply_pan(const glm::vec2& delta) {
     
     // Convert screen delta to world space movement
     glm::vec3 world_delta = screen_to_world_delta(delta, depth);
-    
-    // Debug output
-    static int debug_counter = 0;
-    if (debug_counter++ % 30 == 0 && glm::length(delta) > 0.1f) {
-        glm::vec3 forward = glm::normalize(state_.camera_target - state_.camera_position);
-        std::cout << "[Apply Pan] Screen delta: (" << delta.x << ", " << delta.y << ")" << std::endl;
-        std::cout << "  Depth: " << depth << std::endl;
-        std::cout << "  World delta: (" << world_delta.x << ", " << world_delta.y << ", " << world_delta.z << ")" << std::endl;
-        std::cout << "  Camera forward: (" << forward.x << ", " << forward.y << ", " << forward.z << ")" << std::endl;
-        std::cout << "  Camera pos before: (" << state_.camera_position.x << ", " << state_.camera_position.y << ", " << state_.camera_position.z << ")" << std::endl;
-    }
     
     // Update both camera position and targets
     // We SUBTRACT because when we drag right, we want the scene to move left (camera moves right relative to scene)
@@ -214,6 +211,8 @@ void ViewportNavigator::start_orbit(const glm::vec2& mouse_pos) {
     // Clear pan momentum when starting orbit
     state_.pan_momentum = glm::vec2(0.0f);
     state_.zoom_momentum = 0.0f;
+    // Reset smoothing for new gesture
+    state_.orbit_smooth = glm::vec2(0.0f);
 }
 
 void ViewportNavigator::update_orbit(const glm::vec2& mouse_pos, float delta_time) {
@@ -223,8 +222,8 @@ void ViewportNavigator::update_orbit(const glm::vec2& mouse_pos, float delta_tim
     glm::vec2 delta = mouse_pos - state_.last_mouse_pos;
     state_.last_mouse_pos = mouse_pos;
     
-    // Apply sensitivity
-    delta *= orbit_sensitivity_;
+    // Apply sensitivity with UI scale compensation (divide by scale for HiDPI)
+    delta *= orbit_sensitivity_mouse_ / ui_scale_;
     
     // Update momentum
     state_.orbit_momentum = state_.orbit_momentum * 0.8f + delta * 0.2f;
@@ -233,105 +232,211 @@ void ViewportNavigator::update_orbit(const glm::vec2& mouse_pos, float delta_tim
     apply_orbit(state_.orbit_momentum);
 }
 
+void ViewportNavigator::update_orbit_delta(const glm::vec2& delta, float delta_time, bool is_smart_mouse) {
+    if (state_.mode != NavigationMode::ORBIT) return;
+    
+    // Choose sensitivity based on device type
+    float sensitivity = is_smart_mouse ? orbit_sensitivity_smartmouse_ : orbit_sensitivity_trackpad_;
+    
+    // Apply sensitivity with UI scale compensation (divide by scale for HiDPI)
+    glm::vec2 scaled_delta = delta * sensitivity / ui_scale_;
+    
+    // Hybrid approach: accumulate input for continuous movement, then interpolate
+    // This gives us both responsiveness and smoothness
+    static glm::vec2 target_velocity(0.0f);
+    static bool was_orbiting = false;
+    
+    // Reset target if just started orbiting
+    if (!was_orbiting) {
+        target_velocity = glm::vec2(0.0f);
+        was_orbiting = true;
+    }
+    
+    // Accumulate the new delta into our target with higher weight for new input
+    target_velocity = target_velocity * 0.4f + scaled_delta * 0.6f;  // More weight on new input
+    
+    // Smoothly interpolate current velocity toward target
+    // Higher factor = more responsive, lower = smoother
+    const float smoothing_factor = 0.4f;  // More smoothing for smoother feel
+    state_.orbit_smooth = glm::mix(state_.orbit_smooth, target_velocity, smoothing_factor);
+    
+    // Apply the smoothed delta
+    apply_orbit(state_.orbit_smooth);
+    
+    // Track state for next frame
+    if (state_.mode != NavigationMode::ORBIT) {
+        was_orbiting = false;
+        target_velocity = glm::vec2(0.0f);
+    }
+}
+
 void ViewportNavigator::end_orbit() {
     if (state_.mode == NavigationMode::ORBIT) {
         state_.mode = NavigationMode::NONE;
         state_.has_momentum = true;
+        // Clear smoothing when ending gesture
+        state_.orbit_smooth = glm::vec2(0.0f);
     }
 }
 
 void ViewportNavigator::apply_orbit(const glm::vec2& delta) {
-    // Convert pixel movement to rotation angles
-    float yaw = -delta.x * 0.01f;   // Horizontal rotation
-    float pitch = -delta.y * 0.01f; // Vertical rotation
+    // Industry-standard arcball implementation with original approach
     
-    // Get camera direction relative to orbit center
-    glm::vec3 offset = state_.camera_position - state_.orbit_center;
-    float distance = glm::length(offset);
+    // Step 1: Convert mouse movement to spherical rotation
+    // Sensitivity is already applied before calling this function
+    float horizontal_angle = -delta.x * 0.01f;  // Convert to radians
+    float vertical_angle = -delta.y * 0.01f;    // Convert to radians
     
-    if (distance < 0.001f) return; // Too close to orbit center
+    // Step 2: Get current camera orbit radius
+    glm::vec3 cam_offset = state_.camera_position - state_.orbit_center;
+    float orbit_radius = glm::length(cam_offset);
+    
+    if (orbit_radius < 0.0001f) return; // Prevent division by zero
+    
+    // Step 3: Convert to spherical coordinates for manipulation
+    // Using standard spherical coordinate system: (r, theta, phi)
+    glm::vec3 normalized_offset = cam_offset / orbit_radius;
+    
+    // Calculate current spherical angles
+    float current_phi = std::acos(glm::clamp(normalized_offset.y, -1.0f, 1.0f));
+    float current_theta = std::atan2(normalized_offset.z, normalized_offset.x);
     
     if (use_trackball_) {
-        // Trackball rotation - full 3D rotation
-        glm::quat yaw_quat = glm::angleAxis(yaw, glm::vec3(0, 1, 0));
+        // Arcball mode: Full 3D rotation using quaternions
+        // Both axes are applied together for diagonal movement
         
-        // Calculate right vector for pitch axis
-        glm::vec3 forward = glm::normalize(offset);
-        glm::vec3 right = glm::normalize(glm::cross(glm::vec3(0, 1, 0), forward));
-        glm::quat pitch_quat = glm::angleAxis(pitch, right);
+        // Calculate view-aligned axes for rotation
+        glm::vec3 view_forward = glm::normalize(cam_offset);
+        glm::vec3 world_up = glm::vec3(0, 1, 0);
+        glm::vec3 view_right = glm::normalize(glm::cross(world_up, view_forward));
         
-        // Combine rotations
-        glm::quat rotation = yaw_quat * pitch_quat;
-        
-        // Apply rotation to camera offset
-        offset = rotation * offset;
-        
-        // Update camera position
-        state_.camera_position = state_.orbit_center + offset;
-        
-        // Update camera rotation
-        state_.camera_rotation = rotation * state_.camera_rotation;
-    } else {
-        // Turntable rotation - constrained to avoid gimbal lock
-        
-        // Yaw around world Y axis
-        glm::quat yaw_quat = glm::angleAxis(yaw, glm::vec3(0, 1, 0));
-        offset = yaw_quat * offset;
-        
-        // Calculate right vector for pitch
-        glm::vec3 forward = glm::normalize(offset);
-        glm::vec3 right = glm::normalize(glm::cross(glm::vec3(0, 1, 0), forward));
-        
-        // Limit pitch to avoid flipping
-        glm::vec3 new_forward = glm::rotate(glm::angleAxis(pitch, right), forward);
-        float dot_up = glm::dot(new_forward, glm::vec3(0, 1, 0));
-        
-        // Prevent looking straight up or down (gimbal lock)
-        if (std::abs(dot_up) < 0.99f) {
-            glm::quat pitch_quat = glm::angleAxis(pitch, right);
-            offset = pitch_quat * offset;
+        // Handle special case when looking straight up/down
+        if (glm::length(view_right) < 0.001f) {
+            view_right = glm::vec3(1, 0, 0);
         }
         
-        // Update camera position
-        state_.camera_position = state_.orbit_center + offset;
+        // Create combined rotation from both axes simultaneously
+        // Horizontal rotation around world Y axis
+        glm::quat horizontal_rotation = glm::angleAxis(horizontal_angle, world_up);
+        
+        // Vertical rotation around view-aligned right axis
+        glm::quat vertical_rotation = glm::angleAxis(vertical_angle, view_right);
+        
+        // Combine rotations - order matters for intuitive control
+        glm::quat combined_rotation = horizontal_rotation * vertical_rotation;
+        
+        // Apply combined rotation to camera position
+        glm::vec3 new_offset = combined_rotation * cam_offset;
+        state_.camera_position = state_.orbit_center + new_offset;
+        
+        // Store rotation for other uses
+        state_.camera_rotation = combined_rotation * state_.camera_rotation;
+    } else {
+        // Turntable mode: Constrained rotation to prevent disorientation
+        
+        // Update spherical coordinates
+        float new_theta = current_theta + horizontal_angle;
+        float new_phi = current_phi + vertical_angle;
+        
+        // Clamp vertical angle to prevent flipping (5 to 175 degrees)
+        const float min_phi = glm::radians(5.0f);
+        const float max_phi = glm::radians(175.0f);
+        new_phi = glm::clamp(new_phi, min_phi, max_phi);
+        
+        // Convert back to Cartesian coordinates
+        glm::vec3 new_position;
+        new_position.x = orbit_radius * std::sin(new_phi) * std::cos(new_theta);
+        new_position.y = orbit_radius * std::cos(new_phi);
+        new_position.z = orbit_radius * std::sin(new_phi) * std::sin(new_theta);
+        
+        state_.camera_position = state_.orbit_center + new_position;
     }
     
-    // Update camera target to maintain orbit center
+    // Always look at orbit center
     state_.camera_target = state_.orbit_center;
     
-    // Sync with camera
+    // Update the actual camera
     sync_camera_state();
 }
 
 void ViewportNavigator::zoom(float delta, const glm::vec2& mouse_pos) {
-    state_.zoom_momentum = delta * zoom_sensitivity_;
-    apply_zoom(state_.zoom_momentum);
+    // Apply sensitivity based on input device characteristics with UI scale compensation
+    float sensitivity = zoom_sensitivity_ / ui_scale_;
+    
+    // The accumulated deltas from trackpad/smart mouse are typically 5-20
+    // Mouse wheel sends larger discrete values (> 20)
+    // We're now accumulating events, so deltas will be larger
+    
+    if (std::abs(delta) < 5.0f) {
+        // Small accumulated values = slow gesture
+        sensitivity *= 0.02f;
+    } else if (std::abs(delta) <= 20.0f) {
+        // Medium accumulated values = normal gesture speed
+        sensitivity *= 0.01f;
+    } else {
+        // Large values = fast gesture or mouse wheel
+        sensitivity *= 0.02f;  // Scale appropriately for larger accumulated values
+    }
+    
+    float scaled_delta = delta * sensitivity;
+    
+    // Debug what's happening
+    static int zoom_debug = 0;
+    if (++zoom_debug % 10 == 0) {
+        std::cout << "[Navigator] Zoom delta: " << delta << ", scaled: " << scaled_delta 
+                  << ", mouse: (" << mouse_pos.x << ", " << mouse_pos.y << ")" << std::endl;
+    }
+    
+    // Use simple zoom behavior - just move camera closer/farther from orbit center
+    apply_zoom(scaled_delta);
 }
 
 void ViewportNavigator::apply_zoom(float delta) {
+    // Industry-standard exponential zoom implementation
+    
     if (state_.is_orthographic) {
-        // For orthographic, adjust the scale
-        state_.ortho_scale *= (1.0f - delta);
-        state_.ortho_scale = std::max(0.1f, std::min(1000.0f, state_.ortho_scale));
+        // Orthographic zoom: Scale the view bounds
+        // Use exponential scaling for smooth, consistent feel
+        float scale_factor = std::exp(-delta);
+        state_.ortho_scale *= scale_factor;
+        
+        // Apply reasonable limits
+        const float min_scale = 0.01f;
+        const float max_scale = 1000.0f;
+        state_.ortho_scale = glm::clamp(state_.ortho_scale, min_scale, max_scale);
     } else {
-        // For perspective, move camera along view direction
-        glm::vec3 direction = glm::normalize(state_.camera_position - state_.orbit_center);
-        float distance = glm::length(state_.camera_position - state_.orbit_center);
+        // Perspective zoom: Dolly camera along view vector
         
-        // Scale movement by current distance for consistent feel
-        float move_amount = delta * distance;
+        // Step 1: Calculate current distance from orbit center
+        glm::vec3 view_vector = state_.camera_position - state_.orbit_center;
+        float current_distance = glm::length(view_vector);
         
-        // Prevent getting too close or too far
-        float new_distance = distance - move_amount;
-        new_distance = std::max(0.1f, std::min(1000.0f, new_distance));
+        // Prevent issues with zero distance
+        if (current_distance < 0.001f) {
+            current_distance = 0.001f;
+            view_vector = glm::vec3(0, 0, 1);
+        } else {
+            view_vector = view_vector / current_distance; // Normalize
+        }
         
-        // Update camera position
-        state_.camera_position = state_.orbit_center + direction * new_distance;
+        // Step 2: Apply exponential zoom for smooth feel
+        // Exponential provides consistent zoom speed regardless of distance
+        float zoom_factor = std::exp(-delta);
+        float new_distance = current_distance * zoom_factor;
+        
+        // Step 3: Apply constraints to prevent extreme values
+        const float min_distance = 0.1f;
+        const float max_distance = 1000.0f;
+        new_distance = glm::clamp(new_distance, min_distance, max_distance);
+        
+        // Step 4: Update camera position
+        state_.camera_position = state_.orbit_center + view_vector * new_distance;
     }
     
-    // Sync with camera
+    // Update the actual camera
     sync_camera_state();
 }
+
 
 void ViewportNavigator::update_momentum(float delta_time) {
     if (!state_.has_momentum) return;
@@ -380,6 +485,21 @@ void ViewportNavigator::clear_momentum() {
 
 void ViewportNavigator::sync_camera_state() {
     if (!camera_) return;
+    
+    // Debug camera state changes
+    static glm::vec3 last_pos = state_.camera_position;
+    static glm::vec3 last_target = state_.camera_target;
+    static int sync_count = 0;
+    
+    if (++sync_count % 100 == 0 || glm::distance(last_pos, state_.camera_position) > 1.0f) {
+        glm::vec3 view_dir = glm::normalize(state_.camera_target - state_.camera_position);
+        std::cout << "[Navigator] Camera sync - pos: (" << state_.camera_position.x << ", " 
+                  << state_.camera_position.y << ", " << state_.camera_position.z 
+                  << "), view_dir: (" << view_dir.x << ", " << view_dir.y << ", " << view_dir.z << ")"
+                  << ", mode: " << static_cast<int>(state_.mode) << std::endl;
+        last_pos = state_.camera_position;
+        last_target = state_.camera_target;
+    }
     
     // Update camera with new state - convert glm::vec3 to Vector3D
     camera_->set_position(Vector3D(state_.camera_position.x, state_.camera_position.y, state_.camera_position.z));

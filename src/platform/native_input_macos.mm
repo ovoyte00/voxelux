@@ -85,9 +85,38 @@ class NativeInput;
             native_event.device_type = voxelux::platform::ScrollDeviceType::Trackpad;
         }
         
-        // Use precise scrolling deltas for gestures
+        // CRITICAL: Use scrollingDelta for trackpad/smart mouse (pixel-precise)
+        // macOS converts vertical scrolls to horizontal when Shift is held
+        // We need to detect and restore the original orientation
         native_event.delta_x = event.scrollingDeltaX;
         native_event.delta_y = event.scrollingDeltaY;
+        
+        // Debug: Log the raw values for Smart Mouse
+        if (native_event.device_type == voxelux::platform::ScrollDeviceType::SmartMouse) {
+            NSLog(@"[SmartMouse] scrollingDelta: (%.3f, %.3f) hasPrecise: %d", 
+                  event.scrollingDeltaX, event.scrollingDeltaY, event.hasPreciseScrollingDeltas);
+        }
+        
+        // Detect and correct for macOS shift+scroll axis conversion
+        // When shift is held and we only get horizontal delta, it was likely vertical originally
+        if (native_event.shift_held) {
+            // Check if this looks like a converted vertical scroll:
+            // - We have horizontal delta but no vertical
+            // - The horizontal delta magnitude is typical of vertical scrolling
+            if (std::abs(native_event.delta_x) > 0.1 && std::abs(native_event.delta_y) < 0.1) {
+                // This was likely a vertical scroll converted to horizontal by macOS
+                // Store a flag so the application can restore it
+                native_event.axis_swapped_by_os = true;
+                
+                // Debug output
+                NSLog(@"[Native] Detected OS axis swap: dx=%.2f dy=%.2f (was vertical)",
+                      native_event.delta_x, native_event.delta_y);
+            } else {
+                native_event.axis_swapped_by_os = false;
+            }
+        } else {
+            native_event.axis_swapped_by_os = false;
+        }
         
         // Debug output
         const char* phase_str = "none";
@@ -118,6 +147,18 @@ class NativeInput;
     
     // Check for natural scrolling
     native_event.is_inverted = event.isDirectionInvertedFromDevice;
+    
+    // Check modifier flags
+    NSEventModifierFlags modifiers = event.modifierFlags;
+    native_event.shift_held = (modifiers & NSEventModifierFlagShift) != 0;
+    
+    // Debug: If shift is held and we only get X delta, this might be a converted vertical scroll
+    if (native_event.shift_held && std::abs(native_event.delta_x) > 0.1 && std::abs(native_event.delta_y) < 0.1) {
+        // This is likely a vertical scroll converted to horizontal by macOS
+        // We can't recover the original direction, but we can flag it
+        // std::cout << "[Native] Shift+scroll detected: dx=" << native_event.delta_x 
+        //           << " (likely converted from vertical)" << std::endl;
+    }
     
     // Add to queue
     {

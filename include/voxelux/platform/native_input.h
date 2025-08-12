@@ -37,6 +37,8 @@ struct NativeScrollEvent {
     bool is_precise;          // Precise/pixel-perfect scrolling
     bool is_inverted;         // Natural/inverted scrolling
     bool is_pinch;            // This is a pinch/magnification gesture
+    bool shift_held;          // Shift key was held during scroll
+    bool axis_swapped_by_os;  // OS swapped vertical to horizontal (macOS+shift)
     
     // Timing
     double timestamp;
@@ -46,7 +48,8 @@ struct NativeScrollEvent {
         , delta_x(0), delta_y(0)
         , has_phase(false), is_momentum(false)
         , is_precise(false), is_inverted(false)
-        , is_pinch(false)
+        , is_pinch(false), shift_held(false)
+        , axis_swapped_by_os(false)
         , timestamp(0) {}
 };
 

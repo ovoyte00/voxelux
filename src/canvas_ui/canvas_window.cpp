@@ -216,30 +216,50 @@ void CanvasWindow::poll_events() {
     glfwPollEvents();
     
     // Process any pending native events (like pinch gestures)
-    // These don't come through GLFW callbacks
+    // Only process pinch gestures here - regular scroll events go through GLFW callback
+    // We need to accumulate small deltas to avoid spam
+    static float accumulated_pinch_delta = 0.0f;
+    static double last_pinch_time = 0.0;
+    const float MIN_PINCH_DELTA = 0.5f;  // Minimum delta to process
+    const double PINCH_TIMEOUT = 0.1;    // Reset accumulator after 100ms
+    
     voxelux::platform::NativeScrollEvent native_event;
     while (voxelux::platform::NativeInput::get_next_scroll_event(native_event)) {
         if (native_event.is_pinch) {
-            // Process pinch gesture directly
-            float pinch_delta = static_cast<float>(native_event.delta_y);
-            // std::cout << "[Canvas] Processing pinch from poll, delta=" << pinch_delta << std::endl;
+            double now = glfwGetTime();
             
-            InputEvent event = create_input_event(EventType::TRACKPAD_ZOOM);
-            event.wheel_delta = pinch_delta;
-            event.mouse_delta = Point2D(0, pinch_delta);
-            
-            // Route through normal event system
-            if (region_manager_) {
-                if (region_manager_->handle_event(event)) {
-                    continue; // Event was handled
-                }
+            // Reset accumulator if too much time has passed
+            if (now - last_pinch_time > PINCH_TIMEOUT) {
+                accumulated_pinch_delta = 0.0f;
             }
             
-            if (event_router_) {
-                event_router_->route_event(event);
+            // Accumulate the delta
+            accumulated_pinch_delta += static_cast<float>(native_event.delta_y);
+            last_pinch_time = now;
+            
+            // Only send event if we've accumulated enough delta
+            if (std::abs(accumulated_pinch_delta) >= MIN_PINCH_DELTA) {
+                InputEvent event = create_input_event(EventType::TRACKPAD_ZOOM);
+                event.wheel_delta = accumulated_pinch_delta;
+                event.mouse_delta = Point2D(0, accumulated_pinch_delta);
+                
+                // Route through normal event system
+                if (region_manager_) {
+                    if (region_manager_->handle_event(event)) {
+                        accumulated_pinch_delta = 0.0f;  // Reset after handling
+                        continue;
+                    }
+                }
+                
+                if (event_router_) {
+                    event_router_->route_event(event);
+                }
+                
+                accumulated_pinch_delta = 0.0f;  // Reset after processing
             }
         }
-        // Other native events are handled by GLFW scroll callback
+        // Non-pinch events should not be in the queue here
+        // They're handled by the GLFW scroll callback
     }
     
     // Process deferred events from event router
@@ -463,18 +483,27 @@ bool CanvasWindow::is_smart_mouse_or_trackpad(double x_offset, double y_offset) 
 }
 
 void CanvasWindow::on_mouse_scroll(double x_offset, double y_offset) {
+    // Check if we should ignore scroll events temporarily
+    double now = glfwGetTime();
+    if (scroll_ignore_until_ > 0 && now < scroll_ignore_until_) {
+        std::cout << "[Scroll] Ignoring event during modifier transition window" << std::endl;
+        return;
+    }
+    
     // Ignore tiny movements that might be noise
     if (std::abs(x_offset) < 0.001 && std::abs(y_offset) < 0.001) {
         return;
     }
     
-    // Debug: Log ALL scroll events to understand the issue
+    // Debug: Log scroll events periodically
     static double last_scroll_time = 0;
-    double now = glfwGetTime();
+    static int scroll_event_count = 0;
     double time_delta = now - last_scroll_time;
-    std::cout << "[Scroll Event] x=" << x_offset << " y=" << y_offset 
-              << " modifiers=" << keyboard_modifiers_ 
-              << " time_delta=" << time_delta << "s" << std::endl;
+    if (++scroll_event_count % 20 == 0) {  // Log every 20th event
+        std::cout << "[Scroll Event] x=" << x_offset << " y=" << y_offset 
+                  << " modifiers=" << keyboard_modifiers_ 
+                  << " time_delta=" << time_delta << "s" << std::endl;
+    }
     last_scroll_time = now;
     
     // Track previous modifiers to detect mode changes
@@ -488,9 +517,19 @@ void CanvasWindow::on_mouse_scroll(double x_offset, double y_offset) {
     }
     previous_modifiers = keyboard_modifiers_;
     
-    // First check if we have a native event with device info
+    // Check if we have a native event with device info
+    // Only look for non-pinch events here (pinch is handled in poll_events)
     voxelux::platform::NativeScrollEvent native_event;
-    bool has_native_event = voxelux::platform::NativeInput::get_next_scroll_event(native_event);
+    bool has_native_event = false;
+    
+    // Peek at native events without consuming them if they're pinch events
+    while (voxelux::platform::NativeInput::get_next_scroll_event(native_event)) {
+        if (!native_event.is_pinch) {
+            has_native_event = true;
+            break;  // Found a non-pinch event, use it
+        }
+        // Skip pinch events - they're handled in poll_events
+    }
     
     bool is_smart_device = false;
     
@@ -501,6 +540,17 @@ void CanvasWindow::on_mouse_scroll(double x_offset, double y_offset) {
     // 'now' is already defined above
     
     if (has_native_event) {
+        // Debug native event
+        static int native_debug = 0;
+        // Log native events to debug device detection
+        if (native_debug++ % 10 == 0) {  // Log every 10th event
+            std::cout << "[Native Event] dx=" << native_event.delta_x 
+                      << " dy=" << native_event.delta_y 
+                      << " device=" << static_cast<int>(native_event.device_type)
+                      << " pinch=" << native_event.is_pinch 
+                      << " precise=" << native_event.is_precise
+                      << " momentum=" << native_event.is_momentum << std::endl;
+        }
         // Handle momentum scrolling intelligently:
         // ONLY block momentum for PAN (shift+scroll)
         // Allow momentum for rotate and zoom
@@ -583,7 +633,10 @@ void CanvasWindow::on_mouse_scroll(double x_offset, double y_offset) {
     } else {
         // Fallback to pattern detection
         is_smart_device = is_smart_mouse_or_trackpad(x_offset, y_offset);
-        // std::cout << "[Pattern] smart=" << is_smart_device << " x=" << x_offset << " y=" << y_offset << std::endl;
+        static int pattern_debug = 0;
+        if (++pattern_debug % 20 == 0) {
+            std::cout << "[Pattern] smart=" << is_smart_device << " x=" << x_offset << " y=" << y_offset << std::endl;
+        }
     }
     
     EventType event_type;
@@ -591,22 +644,23 @@ void CanvasWindow::on_mouse_scroll(double x_offset, double y_offset) {
     // Smart mouse/trackpad surface gestures for professional 3D navigation
     if (is_smart_device) {
         // Check modifiers to determine gesture type
-        if (keyboard_modifiers_ & static_cast<uint32_t>(KeyModifier::CMD)) {
-            // Cmd + trackpad surface = zoom
-            event_type = EventType::TRACKPAD_ZOOM;
-            // CMD + smart mouse = zoom
-        } else if (keyboard_modifiers_ & static_cast<uint32_t>(KeyModifier::SHIFT)) {
+        bool cmd_ctrl_held = (keyboard_modifiers_ & static_cast<uint32_t>(KeyModifier::CMD)) != 0 || 
+                            (keyboard_modifiers_ & static_cast<uint32_t>(KeyModifier::CTRL)) != 0;
+        
+        if (shift_held) {
             // Shift + trackpad surface = pan
-            event_type = EventType::TRACKPAD_PAN; 
-            // SHIFT + smart mouse = pan
+            event_type = EventType::TRACKPAD_PAN;
+        } else if (cmd_ctrl_held) {
+            // CMD/CTRL + trackpad = zoom (keep as scroll for handler to process)
+            event_type = EventType::TRACKPAD_SCROLL;
         } else {
-            // Trackpad surface alone = rotate/orbit
+            // No modifiers with trackpad = rotation (orbit camera)
+            // Two-finger scroll without modifiers is the standard rotation gesture
             event_type = EventType::TRACKPAD_ROTATE;
-            // Smart mouse alone = orbit
         }
     } else {
-        // Traditional mouse wheel or simple trackpad scroll
-        event_type = is_smart_device ? EventType::TRACKPAD_SCROLL : EventType::MOUSE_WHEEL;
+        // Traditional mouse wheel
+        event_type = EventType::MOUSE_WHEEL;
     }
     
     InputEvent event = create_input_event(event_type);
@@ -621,10 +675,43 @@ void CanvasWindow::on_mouse_scroll(double x_offset, double y_offset) {
     // Add trackpad-specific data for all smart device events
     if (is_smart_device) {
         event.trackpad.direction_inverted = natural_scroll_direction_;
+        // Set device type flag based on native detection
+        if (has_native_event) {
+            event.trackpad.is_smart_mouse = (native_event.device_type == voxelux::platform::ScrollDeviceType::SmartMouse);
+        } else {
+            // Heuristic: if we have both X and Y deltas, it's likely a smart mouse
+            event.trackpad.is_smart_mouse = (std::abs(x_offset) > 0.01 && std::abs(y_offset) > 0.01);
+        }
         // Store both X and Y deltas for trackpad gestures EXCEPT zoom
         // Zoom should only use wheel_delta, not mouse_delta
         if (event_type != EventType::TRACKPAD_ZOOM) {
-            event.mouse_delta = Point2D(static_cast<float>(x_offset), static_cast<float>(y_offset));
+            // Use native event deltas if available
+            // Otherwise fall back to GLFW offsets
+            if (has_native_event && !native_event.is_pinch) {
+                // Handle macOS axis swap restoration
+                if (native_event.axis_swapped_by_os && event_type == EventType::TRACKPAD_PAN) {
+                    // macOS swapped vertical to horizontal due to shift key
+                    // When axis is swapped, delta_x contains what was originally delta_y
+                    // We want to preserve both axes for proper 2D panning
+                    // If only horizontal movement detected but shift is held, it was originally vertical
+                    if (std::abs(native_event.delta_x) > 0.1 && std::abs(native_event.delta_y) < 0.1) {
+                        // Pure vertical scroll that was converted to horizontal by macOS
+                        event.mouse_delta = Point2D(0, static_cast<float>(native_event.delta_x));
+                        std::cout << "[Canvas] Restored vertical pan: dy=" << native_event.delta_x << std::endl;
+                    } else {
+                        // Mixed movement or true horizontal - use as-is
+                        event.mouse_delta = Point2D(static_cast<float>(native_event.delta_x), 
+                                                   static_cast<float>(native_event.delta_y));
+                    }
+                } else {
+                    // Use the raw deltas as-is
+                    event.mouse_delta = Point2D(static_cast<float>(native_event.delta_x), 
+                                               static_cast<float>(native_event.delta_y));
+                }
+            } else {
+                // Fall back to GLFW offsets
+                event.mouse_delta = Point2D(static_cast<float>(x_offset), static_cast<float>(y_offset));
+            }
         }
     }
     
@@ -652,32 +739,19 @@ void CanvasWindow::on_key_event(int key, int scancode, int action, int mods) {
         const char* action_str = (action == GLFW_PRESS) ? "PRESS" : 
                                  (action == GLFW_RELEASE) ? "RELEASE" : "REPEAT";
         
-        // Get camera position to see if it changes on shift release
-        if (region_manager_) {
-            auto* root = region_manager_->get_root_region();
-            if (root && root->get_editor()) {
-                // This is a bit hacky but for debugging...
-                std::cout << "[KEY] SHIFT " << action_str 
-                          << " time=" << glfwGetTime() 
-                          << " (Camera state will be logged by viewport)" << std::endl;
-            }
-        } else {
-            std::cout << "[KEY] SHIFT " << action_str 
-                      << " time=" << glfwGetTime() << std::endl;
-        }
+        std::cout << "[KEY] SHIFT " << action_str 
+                  << " time=" << glfwGetTime() << std::endl;
         
         // Clear pending scroll events on both press and release
         if (action == GLFW_PRESS || action == GLFW_RELEASE) {
-            // Consume all pending native scroll events to clear any queued events
-            voxelux::platform::NativeScrollEvent discard_event;
-            int cleared = 0;
-            while (voxelux::platform::NativeInput::get_next_scroll_event(discard_event)) {
-                cleared++;
-            }
-            if (cleared > 0) {
-                std::cout << "[KEY] Cleared " << cleared << " pending scroll events on shift " 
-                          << action_str << std::endl;
-            }
+            // Clear ALL pending native scroll events using the dedicated method
+            voxelux::platform::NativeInput::clear_scroll_events();
+            std::cout << "[KEY] Cleared native scroll event queue on shift " 
+                      << action_str << std::endl;
+            
+            // Also set a flag to ignore scroll events for a brief period
+            // This prevents any in-flight events from being processed
+            scroll_ignore_until_ = glfwGetTime() + 0.05; // 50ms window
         }
     }
     

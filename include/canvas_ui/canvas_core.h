@@ -154,6 +154,7 @@ struct InputEvent {
         float scale_factor = 1.0f;
         float rotation_angle = 0.0f;
         bool direction_inverted = false;
+        bool is_smart_mouse = false;  // true for smart mouse, false for regular trackpad
     } trackpad;
     
     struct SmartMouseData {

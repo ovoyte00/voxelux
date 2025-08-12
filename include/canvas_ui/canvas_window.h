@@ -104,6 +104,7 @@ private:
     bool mouse_buttons_[3] = {false, false, false}; // left, right, middle
     uint32_t keyboard_modifiers_ = 0;
     bool natural_scroll_direction_ = false; // Smart mouse/trackpad scroll direction
+    double scroll_ignore_until_ = 0.0; // Timestamp until which to ignore scroll events
     
     // Initialization state
     bool initialized_ = false;

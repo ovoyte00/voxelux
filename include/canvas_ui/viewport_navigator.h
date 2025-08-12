@@ -45,6 +45,10 @@ public:
         glm::vec2 orbit_momentum{0.0f};
         float zoom_momentum = 0.0f;
         
+        // Smoothing for trackpad (reduces choppiness)
+        glm::vec2 orbit_smooth{0.0f};
+        glm::vec2 pan_smooth{0.0f};
+        
         // Timing
         double last_update_time = 0.0;
         bool has_momentum = false;
@@ -59,6 +63,9 @@ public:
     // Update viewport dimensions
     void set_viewport_size(int width, int height);
     
+    // Set UI scale factor (for HiDPI displays)
+    void set_ui_scale(float scale);
+    
     // Navigation operations
     void start_pan(const glm::vec2& mouse_pos);
     void update_pan(const glm::vec2& mouse_pos, float delta_time);
@@ -67,6 +74,7 @@ public:
     
     void start_orbit(const glm::vec2& mouse_pos);
     void update_orbit(const glm::vec2& mouse_pos, float delta_time);
+    void update_orbit_delta(const glm::vec2& delta, float delta_time, bool is_smart_mouse = false);  // For trackpad deltas
     void end_orbit();
     
     void zoom(float delta, const glm::vec2& mouse_pos);
@@ -110,14 +118,17 @@ private:
     int viewport_width_;
     int viewport_height_;
     
-    // Navigation parameters
+    // Navigation parameters (base values before UI scale)
+    float ui_scale_ = 1.0f;
     float pan_sensitivity_ = 1.0f;
-    float orbit_sensitivity_ = 0.5f;
+    float orbit_sensitivity_mouse_ = 0.7f;       // Mouse orbit sensitivity (lower = less sensitive)
+    float orbit_sensitivity_trackpad_ = 1.2f;    // Trackpad sensitivity (lower = less sensitive)
+    float orbit_sensitivity_smartmouse_ = 0.7f;  // Smart mouse sensitivity
     float zoom_sensitivity_ = 0.1f;
     float momentum_decay_ = 0.92f;  // Momentum decay factor
     
     // Trackball parameters
-    bool use_trackball_ = true;  // vs turntable
+    bool use_trackball_ = false;  // Use turntable for more intuitive control
     float trackball_size_ = 0.8f;
 };
 

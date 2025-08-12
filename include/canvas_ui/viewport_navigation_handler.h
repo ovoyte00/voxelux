@@ -123,6 +123,10 @@ public:
     void start_dolly(const Point2D& start_pos);
     void end_navigation();
     
+    // Debug methods
+    void print_current_state() const;
+    const char* get_mode_string() const;
+    
     // Momentum and smooth navigation
     void enable_momentum(bool enable) { momentum_enabled_ = enable; }
     void update_momentum(float delta_time);
@@ -196,6 +200,7 @@ private:
     std::chrono::steady_clock::time_point last_click_time_;
     std::chrono::steady_clock::time_point gesture_start_time_;
     int consecutive_clicks_ = 0;
+    double ignore_events_until_ = 0;
     
     // Momentum system
     bool momentum_enabled_ = true;
