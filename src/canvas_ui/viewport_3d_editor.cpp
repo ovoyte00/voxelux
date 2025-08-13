@@ -347,18 +347,53 @@ void Viewport3DEditor::setup_nav_widget() {
             
             float view_distance = 60.0f;
             
+            // Store previous projection BEFORE we change anything
+            // Only store if we're not already in an axis view
+            if (current_view_axis_ == -1) {
+                previous_projection_type_ = camera_.get_projection_type();
+                std::cout << "[Widget] Storing previous projection: " 
+                          << (previous_projection_type_ == Camera3D::ProjectionType::Perspective ? "Perspective" : "Orthographic") 
+                          << std::endl;
+            }
+            
+            // Update view state tracking
+            is_exact_side_view_ = (axis == 0 || axis == 2);  // X and Z views get vertical grids
+            current_view_axis_ = axis;
+            current_view_positive_ = positive;
+            
+            // Switch to orthographic for axis-aligned views (like Blender's auto-perspective)
+            camera_.set_projection_type(Camera3D::ProjectionType::Orthographic);
+            camera_.set_orthographic_size(30.0f);  // Reasonable default size
+            camera_.set_near_plane(0.1f);
+            camera_.set_far_plane(10000.0f);  // Large far plane to include grids
+            
+            std::cout << "[Widget] Switched to Orthographic for axis view" << std::endl;
+            
             if (axis == 0) { // X axis - Right/Left view
-                // Looking along X axis
-                camera_.set_position(Vector3D(positive ? view_distance : -view_distance, 0, 0));
-                camera_.look_at(Vector3D(0, 0, 0), Vector3D(0, 1, 0)); // Y is up
+                // Looking along X axis - show YZ plane
+                camera_.set_axis_view(positive ? Camera3D::AxisView::Right : Camera3D::AxisView::Left, view_distance);
+                
+                if (grid_3d_) {
+                    std::cout << "[Viewport] X-axis view: Enabling YZ vertical grid" << std::endl;
+                    grid_3d_->set_active_plane(Grid3DRenderer::PLANE_YZ);
+                    grid_3d_->enable_vertical_grid(true);
+                }
             } else if (axis == 1) { // Y axis - Top/Bottom view  
-                // Looking along Y axis
-                camera_.set_position(Vector3D(0, positive ? view_distance : -view_distance, 0));
-                camera_.look_at(Vector3D(0, 0, 0), Vector3D(0, 0, positive ? -1 : 1)); // Z forward when looking down
+                // Looking along Y axis - no vertical grid
+                camera_.set_axis_view(positive ? Camera3D::AxisView::Top : Camera3D::AxisView::Bottom, view_distance);
+                
+                if (grid_3d_) {
+                    grid_3d_->enable_vertical_grid(false);
+                }
             } else if (axis == 2) { // Z axis - Front/Back view
-                // Looking along Z axis
-                camera_.set_position(Vector3D(0, 0, positive ? view_distance : -view_distance));
-                camera_.look_at(Vector3D(0, 0, 0), Vector3D(0, 1, 0)); // Y is up
+                // Looking along Z axis - show XY plane
+                camera_.set_axis_view(positive ? Camera3D::AxisView::Front : Camera3D::AxisView::Back, view_distance);
+                
+                if (grid_3d_) {
+                    std::cout << "[Viewport] Z-axis view: Enabling XY vertical grid" << std::endl;
+                    grid_3d_->set_active_plane(Grid3DRenderer::PLANE_XY);
+                    grid_3d_->enable_vertical_grid(true);
+                }
             }
             
             std::cout << "[Widget] Camera position AFTER: " << camera_.get_position().x << ", " 
@@ -390,6 +425,34 @@ void Viewport3DEditor::render_grid(CanvasRenderer* renderer, const Rect2D& bound
 bool Viewport3DEditor::handle_camera_navigation(const InputEvent& event, const Rect2D& bounds) {
     if (!nav_handler_) {
         return false;
+    }
+    
+    // Detect when orbiting starts to disable vertical grid and restore perspective
+    if (event.type == EventType::TRACKPAD_ROTATE || 
+        (event.type == EventType::MOUSE_PRESS && event.mouse_button == MouseButton::MIDDLE && !event.has_modifier(KeyModifier::SHIFT))) {
+        
+        std::cout << "[Viewport] Orbit event detected. is_exact_side_view=" << is_exact_side_view_ 
+                  << ", current_view_axis=" << current_view_axis_ << std::endl;
+        
+        // User is starting to orbit/rotate the camera
+        if (current_view_axis_ != -1) {  // We're in an axis view
+            std::cout << "[Viewport] Disabling vertical grid and restoring " 
+                      << (previous_projection_type_ == Camera3D::ProjectionType::Perspective ? "Perspective" : "Orthographic")
+                      << " - camera rotation started" << std::endl;
+            
+            // Restore previous projection mode (usually perspective)
+            camera_.set_projection_type(previous_projection_type_);
+            camera_.set_far_plane(100000.0f);  // Restore large far plane for perspective
+            
+            
+            // Disable vertical grid
+            if (grid_3d_) {
+                grid_3d_->enable_vertical_grid(false);
+            }
+            
+            is_exact_side_view_ = false;
+            current_view_axis_ = -1;
+        }
     }
     
     // Clear any pending sphere click if user starts navigating with middle mouse or trackpad

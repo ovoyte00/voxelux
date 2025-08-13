@@ -136,6 +136,14 @@ Quaternion Quaternion::from_axis_angle(const Vector3D& axis, float angle) {
 Quaternion Quaternion::look_rotation(const Vector3D& forward, const Vector3D& up) {
     Vector3D f = forward.normalized();
     Vector3D u = up.normalized();
+    
+    // Handle the case where forward is nearly opposite to default forward (0,0,-1)
+    // This happens when looking straight down the Z axis
+    if (std::abs(f.z + 1.0f) < 0.001f && std::abs(f.x) < 0.001f && std::abs(f.y) < 0.001f) {
+        // Looking straight back along Z axis - 180 degree rotation around Y
+        return Quaternion(0, 1, 0, 0); // 180 degree rotation around Y axis
+    }
+    
     Vector3D r = u.cross(f).normalized();
     u = f.cross(r);
     
@@ -279,25 +287,43 @@ Matrix4x4 Matrix4x4::scale(float uniform_scale) {
 }
 
 Matrix4x4 Matrix4x4::look_at(const Vector3D& eye, const Vector3D& target, const Vector3D& up) {
-    Vector3D forward = (target - eye).normalized();
-    Vector3D right = forward.cross(up).normalized();
-    Vector3D actual_up = right.cross(forward);
+    // Calculate basis vectors
+    Vector3D forward = (eye - target).normalized();  // Note: eye - target for RH coordinate system
+    Vector3D right = up.cross(forward).normalized();
+    Vector3D actual_up = forward.cross(right);
+    
+    // Debug output - always print for Z-axis view
+    std::cout << "[Matrix4x4::look_at] eye=(" << eye.x << "," << eye.y << "," << eye.z 
+              << ") target=(" << target.x << "," << target.y << "," << target.z << ")" << std::endl;
+    std::cout << "[Matrix4x4::look_at] forward=(" << forward.x << "," << forward.y << "," << forward.z << ")" << std::endl;
+    std::cout << "[Matrix4x4::look_at] right=(" << right.x << "," << right.y << "," << right.z << ")" << std::endl;
+    std::cout << "[Matrix4x4::look_at] actual_up=(" << actual_up.x << "," << actual_up.y << "," << actual_up.z << ")" << std::endl;
     
     Matrix4x4 result;
+    
+    // Right vector
     result.m[0][0] = right.x;
-    result.m[0][1] = right.y;
-    result.m[0][2] = right.z;
-    result.m[0][3] = -right.dot(eye);
+    result.m[1][0] = right.y;
+    result.m[2][0] = right.z;
+    result.m[3][0] = 0.0f;
     
-    result.m[1][0] = actual_up.x;
+    // Up vector
+    result.m[0][1] = actual_up.x;
     result.m[1][1] = actual_up.y;
-    result.m[1][2] = actual_up.z;
-    result.m[1][3] = -actual_up.dot(eye);
+    result.m[2][1] = actual_up.z;
+    result.m[3][1] = 0.0f;
     
-    result.m[2][0] = -forward.x;
-    result.m[2][1] = -forward.y;
-    result.m[2][2] = -forward.z;
-    result.m[2][3] = forward.dot(eye);
+    // Forward vector (negated for right-handed system looking down -Z)
+    result.m[0][2] = forward.x;
+    result.m[1][2] = forward.y;
+    result.m[2][2] = forward.z;
+    result.m[3][2] = 0.0f;
+    
+    // Translation
+    result.m[0][3] = -right.dot(eye);
+    result.m[1][3] = -actual_up.dot(eye);
+    result.m[2][3] = -forward.dot(eye);
+    result.m[3][3] = 1.0f;
     
     return result;
 }
@@ -515,8 +541,8 @@ void Camera3D::orbit_horizontal(float angle_radians) {
         Quaternion quat_global_y = Quaternion::from_axis_angle(Vector3D(0, 1, 0), angle_radians);
         
         // Pre-multiply for global rotation (rotate the camera in world space)
-        view_quat_ = quat_global_y * view_quat_;
-        view_quat_ = view_quat_.normalized();
+        rotation_ = quat_global_y * rotation_;
+        rotation_ = rotation_.normalized();
         
         // Update position from the new view quaternion
         update_position_from_view_quat();
@@ -539,14 +565,14 @@ void Camera3D::orbit_vertical(float angle_radians) {
         
         // Get the camera's right vector from the current view quaternion
         // In view space, right is +X
-        Vector3D right = view_quat_.rotate_vector(Vector3D(1, 0, 0));
+        Vector3D right = rotation_.rotate_vector(Vector3D(1, 0, 0));
         
         // Create rotation around this axis
         Quaternion quat_local_x = Quaternion::from_axis_angle(right, angle_radians);
         
         // Pre-multiply to apply in world space for proper rotation order
-        view_quat_ = quat_local_x * view_quat_;
-        view_quat_ = view_quat_.normalized();
+        rotation_ = quat_local_x * rotation_;
+        rotation_ = rotation_.normalized();
         
         // Update position from the new view quaternion
         update_position_from_view_quat();
@@ -623,13 +649,91 @@ void Camera3D::look_at(const Vector3D& target, const Vector3D& up) {
     up_vector_ = up.normalized();
     
     Vector3D forward = (target - position_).normalized();
+    std::cout << "[Camera3D] Forward vector: " << forward.x << ", " << forward.y << ", " << forward.z << std::endl;
+    
     rotation_ = Quaternion::look_rotation(forward, up_vector_);
+    std::cout << "[Camera3D] Resulting quaternion: " << rotation_.x << ", " << rotation_.y << ", " << rotation_.z << ", " << rotation_.w << std::endl;
     
     if (navigation_mode_ == NavigationMode::Orbit) {
         orbit_target_ = target;
-        update_orbit_from_position();
+        // Update spherical coordinates but preserve the quaternion we just set
+        Vector3D to_camera = position_ - target;
+        distance_ = to_camera.length();
+        CameraUtils::cartesian_to_spherical(to_camera, distance_, horizontal_angle_, vertical_angle_);
+        vertical_angle_ = PI * 0.5f - vertical_angle_; // Convert to elevation angle
+        // Don't rebuild the quaternion - keep the one from look_rotation
     }
     
+    mark_view_dirty();
+}
+
+void Camera3D::set_axis_view(AxisView view, float distance) {
+    // Pre-calculated quaternions for each axis view
+    // These represent the exact rotations needed for each view
+    // Using the same approach as professional 3D applications
+    
+    const float SQRT_HALF = 0.70710678118654752440f; // sqrt(0.5) or 1/sqrt(2)
+    
+    // Set the position and rotation based on the view
+    orbit_target_ = Vector3D(0, 0, 0);
+    target_ = orbit_target_;
+    distance_ = distance;
+    
+    switch (view) {
+        case AxisView::Front:
+            // Looking along -Z axis (camera at +Z)
+            position_ = Vector3D(0, 0, distance);
+            // Identity quaternion - we're already looking along -Z by default
+            rotation_ = Quaternion(0, 0, 0, 1);
+            break;
+            
+        case AxisView::Back:
+            // Looking along +Z axis (camera at -Z)
+            position_ = Vector3D(0, 0, -distance);
+            // 180° rotation around Y to look backward
+            rotation_ = Quaternion(0, 1, 0, 0);
+            break;
+            
+        case AxisView::Right:
+            // Looking along -X axis (camera at +X)
+            position_ = Vector3D(distance, 0, 0);
+            // 90° rotation around Y
+            rotation_ = Quaternion(0, SQRT_HALF, 0, SQRT_HALF);
+            break;
+            
+        case AxisView::Left:
+            // Looking along +X axis (camera at -X)
+            position_ = Vector3D(-distance, 0, 0);
+            // -90° rotation around Y
+            rotation_ = Quaternion(0, -SQRT_HALF, 0, SQRT_HALF);
+            break;
+            
+        case AxisView::Top:
+            // Looking along -Y axis (camera at +Y)
+            position_ = Vector3D(0, distance, 0);
+            // 90° rotation around X to look down
+            // This should rotate from default forward (-Z) to looking down (-Y)
+            rotation_ = Quaternion(-SQRT_HALF, 0, 0, SQRT_HALF);
+            break;
+            
+        case AxisView::Bottom:
+            // Looking along +Y axis (camera at -Y)
+            position_ = Vector3D(0, -distance, 0);
+            // -90° rotation around X (opposite of Top)
+            rotation_ = Quaternion(SQRT_HALF, 0, 0, SQRT_HALF);
+            break;
+            
+        case AxisView::Custom:
+            // Don't change anything for custom view
+            return;
+    }
+    
+    // Update spherical coordinates to match
+    Vector3D to_camera = position_ - target_;
+    CameraUtils::cartesian_to_spherical(to_camera, distance_, horizontal_angle_, vertical_angle_);
+    vertical_angle_ = PI * 0.5f - vertical_angle_;
+    
+    up_vector_ = Vector3D(0, 1, 0);
     mark_view_dirty();
 }
 
@@ -650,19 +754,19 @@ void Camera3D::reset_to_default() {
     
     // Build view quaternion for initial 3/4 view
     // Looking from front-right-above (positive X, positive Y, positive Z quadrant)
-    view_quat_ = Quaternion::identity();
+    rotation_ = Quaternion::identity();
     
     // First: horizontal rotation around world Y (45 degrees to the left to see from front-right)
     // Negative angle rotates camera to the left (counter-clockwise from top view)
     Quaternion y_rot = Quaternion::from_axis_angle(Vector3D(0, 1, 0), 45.0f * DEG_TO_RAD);
-    view_quat_ = y_rot * view_quat_;
+    rotation_ = y_rot * rotation_;
     
     // Second: vertical rotation around local X (30 degrees looking down)
-    Vector3D right = view_quat_.rotate_vector(Vector3D(1, 0, 0));
+    Vector3D right = rotation_.rotate_vector(Vector3D(1, 0, 0));
     Quaternion x_rot = Quaternion::from_axis_angle(right, -30.0f * DEG_TO_RAD);
-    view_quat_ = x_rot * view_quat_;
+    rotation_ = x_rot * rotation_;
     
-    view_quat_ = view_quat_.normalized();
+    rotation_ = rotation_.normalized();
     
     // Also set the spherical angles to match
     horizontal_angle_ = 45.0f * DEG_TO_RAD;
@@ -671,8 +775,6 @@ void Camera3D::reset_to_default() {
     // Derive position from view quaternion
     update_position_from_view_quat();
     
-    // Set rotation to match view quaternion
-    rotation_ = view_quat_;
     
     fov_degrees_ = 45.0f;
     ortho_size_ = 10.0f;
@@ -728,21 +830,25 @@ void Camera3D::update_orbit_from_position() {
     CameraUtils::cartesian_to_spherical(to_camera, distance_, horizontal_angle_, vertical_angle_);
     vertical_angle_ = PI * 0.5f - vertical_angle_; // Convert to elevation angle
     
+    std::cout << "[Camera3D] update_orbit_from_position: to_camera=(" << to_camera.x << "," << to_camera.y << "," << to_camera.z 
+              << "), h_angle=" << horizontal_angle_ << ", v_angle=" << vertical_angle_ << std::endl;
+    
     // For turntable mode, build quaternion from scratch without look_rotation
     if (use_turntable_) {
         // Build the view quaternion purely from rotations (no look_rotation)
-        view_quat_ = Quaternion::identity();
+        rotation_ = Quaternion::identity();
         
         // First apply the horizontal rotation (around world Y)
         Quaternion y_rot = Quaternion::from_axis_angle(Vector3D(0, 1, 0), horizontal_angle_);
-        view_quat_ = y_rot * view_quat_;
+        rotation_ = y_rot * rotation_;
         
         // Then apply the vertical rotation (around local X)
-        Vector3D right = view_quat_.rotate_vector(Vector3D(1, 0, 0));
+        Vector3D right = rotation_.rotate_vector(Vector3D(1, 0, 0));
         Quaternion x_rot = Quaternion::from_axis_angle(right, -vertical_angle_);
-        view_quat_ = x_rot * view_quat_;
+        rotation_ = x_rot * rotation_;
         
-        view_quat_ = view_quat_.normalized();
+        rotation_ = rotation_.normalized();
+        std::cout << "[Camera3D] Built quaternion from angles: " << rotation_.x << "," << rotation_.y << "," << rotation_.z << "," << rotation_.w << std::endl;
     }
 }
 
@@ -752,14 +858,12 @@ void Camera3D::update_position_from_view_quat() {
     // The camera looks down its local -Z axis (forward in OpenGL)
     
     // Get the view direction (camera looks down -Z in its local space)
-    Vector3D view_forward = view_quat_.rotate_vector(Vector3D(0, 0, -1));
+    Vector3D view_forward = rotation_.rotate_vector(Vector3D(0, 0, -1));
     
     // Position is orbit_target minus the forward direction scaled by distance
     // (camera is behind where it's looking)
     position_ = orbit_target_ - view_forward * distance_;
     
-    // Update the rotation to match the view quaternion
-    rotation_ = view_quat_;
     
     // Target stays at orbit target
     target_ = orbit_target_;
@@ -778,15 +882,31 @@ void Camera3D::update_cached_matrices() const {
             // Build view matrix directly from quaternion for turntable mode
             // The view matrix transforms from world to camera space
             
+            std::cout << "[Camera3D] Building view matrix from quaternion: " 
+                      << rotation_.x << ", " << rotation_.y << ", " << rotation_.z << ", " << rotation_.w << std::endl;
+            
             // Rotation part: conjugate of view quaternion to invert the rotation
-            Matrix4x4 rot_matrix = Matrix4x4::rotation(view_quat_.conjugate());
+            Matrix4x4 rot_matrix = Matrix4x4::rotation(rotation_.conjugate());
+            
+            std::cout << "[Camera3D] Rotation matrix:" << std::endl;
+            std::cout << "  [" << rot_matrix.m[0][0] << ", " << rot_matrix.m[0][1] << ", " << rot_matrix.m[0][2] << "]" << std::endl;
+            std::cout << "  [" << rot_matrix.m[1][0] << ", " << rot_matrix.m[1][1] << ", " << rot_matrix.m[1][2] << "]" << std::endl;
+            std::cout << "  [" << rot_matrix.m[2][0] << ", " << rot_matrix.m[2][1] << ", " << rot_matrix.m[2][2] << "]" << std::endl;
             
             // Translation part: negative position in world space
             Matrix4x4 trans_matrix = Matrix4x4::translation(Vector3D(-position_.x, -position_.y, -position_.z));
             
             // Combine: first translate, then rotate (standard view matrix order)
             cached_view_matrix_ = rot_matrix * trans_matrix;
+            
+            std::cout << "[Camera3D] Final view matrix:" << std::endl;
+            std::cout << "  [" << cached_view_matrix_.m[0][0] << ", " << cached_view_matrix_.m[0][1] 
+                      << ", " << cached_view_matrix_.m[0][2] << ", " << cached_view_matrix_.m[0][3] << "]" << std::endl;
         } else {
+            // Debug the parameters
+            std::cout << "[Camera3D] Calling look_at with position=(" << position_.x << "," << position_.y << "," << position_.z 
+                      << ") target=(" << target_.x << "," << target_.y << "," << target_.z 
+                      << ") up=(" << up_vector_.x << "," << up_vector_.y << "," << up_vector_.z << ")" << std::endl;
             cached_view_matrix_ = Matrix4x4::look_at(position_, target_, up_vector_);
         }
         view_matrix_dirty_ = false;
@@ -801,6 +921,9 @@ void Camera3D::update_cached_matrices() const {
             float right = half_size * aspect_ratio_;
             float bottom = -half_size;
             float top = half_size;
+            std::cout << "[Camera3D] Orthographic projection: left=" << left << ", right=" << right 
+                      << ", bottom=" << bottom << ", top=" << top 
+                      << ", near=" << near_plane_ << ", far=" << far_plane_ << std::endl;
             cached_projection_matrix_ = Matrix4x4::orthographic(left, right, bottom, top, near_plane_, far_plane_);
         }
         projection_matrix_dirty_ = false;

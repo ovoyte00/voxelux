@@ -151,6 +151,17 @@ public:
         Walk      // Ground-constrained movement
     };
     
+    // Standard axis-aligned views
+    enum class AxisView {
+        Front,    // Looking along -Z (at XY plane)
+        Back,     // Looking along +Z  
+        Right,    // Looking along -X (at YZ plane)
+        Left,     // Looking along +X
+        Top,      // Looking along -Y (at XZ plane)
+        Bottom,   // Looking along +Y
+        Custom    // Non-axis-aligned view
+    };
+    
     Camera3D();
     ~Camera3D() = default;
     
@@ -203,6 +214,10 @@ public:
     void set_navigation_mode(NavigationMode mode);
     NavigationMode get_navigation_mode() const { return navigation_mode_; }
     
+    // Turntable mode control (for axis-aligned views)
+    void set_use_turntable(bool use_turntable) { use_turntable_ = use_turntable; }
+    bool get_use_turntable() const { return use_turntable_; }
+    
     // Matrix calculations
     Matrix4x4 get_view_matrix() const;
     Matrix4x4 get_projection_matrix() const;
@@ -233,6 +248,7 @@ public:
     // Utility functions
     void reset_to_default();
     void copy_from(const Camera3D& other);
+    void set_axis_view(AxisView view, float distance = 60.0f);
     void interpolate_to(const Camera3D& target, float t);
     
     // Constraints
@@ -256,8 +272,7 @@ private:
     Vector3D up_vector_{0, 1, 0};
     Quaternion rotation_;
     
-    // Professional view quaternion for turntable mode
-    Quaternion view_quat_ = Quaternion::identity();  // Start with identity
+    // Use turntable rotation mode (vs look_at mode)
     bool use_turntable_ = true;  // Use professional turntable rotation
     
     // Orbit camera state

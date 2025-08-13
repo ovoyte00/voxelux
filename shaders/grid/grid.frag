@@ -16,6 +16,7 @@ uniform vec4 grid_axis_z_color;
 uniform float line_size;
 uniform float grid_scale;
 uniform float grid_subdivision; // Subdivision factor (10 for decimal, 16 for Minecraft, etc.)
+uniform int grid_plane; // 0=XZ (horizontal), 1=YZ (vertical), 2=XY (vertical)
 
 out vec4 color;
 
@@ -53,30 +54,61 @@ float linearstep(float edge0, float edge1, float x) {
 }
 
 void main() {
+    
     // Calculate derivatives for anti-aliasing (fwidth)
     vec3 P = world_pos;
     vec3 dFdxPos = dFdx(P);
     vec3 dFdyPos = dFdy(P);
     vec3 fwidthPos = abs(dFdxPos) + abs(dFdyPos);
     
-    // Grid position and derivatives on XZ plane
-    vec2 grid_pos = P.xz;
-    vec2 grid_fwidth = fwidthPos.xz;
+    // Grid position and derivatives based on plane
+    vec2 grid_pos;
+    vec2 grid_fwidth;
+    
+    if (grid_plane == 0) {
+        // XZ plane (horizontal) - X goes right, Z goes forward
+        grid_pos = P.xz;
+        grid_fwidth = fwidthPos.xz;
+    } else if (grid_plane == 1) {
+        // YZ plane (vertical, X-axis view) - Z goes horizontal, Y goes vertical
+        grid_pos = vec2(P.z, P.y);  // Z horizontal, Y vertical
+        grid_fwidth = vec2(fwidthPos.z, fwidthPos.y);
+    } else {
+        // XY plane (vertical, Z-axis view) - X goes horizontal, Y goes vertical
+        grid_pos = vec2(P.x, P.y);  // X horizontal, Y vertical
+        grid_fwidth = vec2(fwidthPos.x, fwidthPos.y);
+    }
     
     // Calculate distance for overall fading
     vec3 V = camera_position - P;
     float dist = length(V);
     V = V / dist;  // Normalize
     
-    // Angle-based fading (fade when looking parallel to grid)
-    float angle = 1.0 - abs(V.y);
-    angle = angle * angle;
-    float angle_fade = 1.0 - angle * angle;
+    // Angle-based fading (only for horizontal grid)
+    float angle_fade = 1.0;
+    if (grid_plane == 0) {
+        // XZ plane - fade based on Y viewing angle
+        // But don't fade when looking nearly straight down/up (for top/bottom views)
+        if (abs(V.y) < 0.95) {
+            float angle = 1.0 - abs(V.y);
+            angle = angle * angle;
+            angle_fade = 1.0 - angle * angle;
+        }
+    }
+    // No angle fading for vertical grids (planes 1 and 2)
+    // They should always be fully visible as backdrops
     
-    // Distance-based fading for horizon
-    float fade_start = 200.0;
-    float fade_end = 1000.0;
-    float distance_fade = 1.0 - smoothstep(fade_start, fade_end, dist);
+    // Distance-based fading
+    float distance_fade = 1.0;
+    if (grid_plane == 0) {
+        // Normal distance fading for horizontal grid
+        float fade_start = 200.0;
+        float fade_end = 1000.0;
+        distance_fade = 1.0 - smoothstep(fade_start, fade_end, dist);
+    } else {
+        // No distance fading for vertical grids - they're backdrops
+        distance_fade = 1.0;
+    }
     
     // Combined fade for the entire grid
     float fade = angle_fade * distance_fade;
@@ -134,17 +166,45 @@ void main() {
     // Mix in coarsest scale (always major color)
     out_color = mix(out_color, grid_major_color, gridC);
     
-    // Axis lines - make them more visible with a larger threshold
+    // Axis lines - adapt based on plane
     float axis_threshold = max(2.0, line_size * 2.0);
-    if (abs(P.z) < fwidthPos.z * axis_threshold) {
-        // X-axis (red)
-        float x_axis = 1.0 - LINE_STEP(abs(P.z) / fwidthPos.z - line_size);
-        out_color = mix(out_color, grid_axis_x_color, x_axis);
-    }
-    if (abs(P.x) < fwidthPos.x * axis_threshold) {
-        // Z-axis (blue)  
-        float z_axis = 1.0 - LINE_STEP(abs(P.x) / fwidthPos.x - line_size);
-        out_color = mix(out_color, grid_axis_z_color, z_axis);
+    
+    if (grid_plane == 0) {
+        // XZ plane - show X and Z axes
+        if (abs(P.z) < fwidthPos.z * axis_threshold) {
+            // X-axis (red)
+            float x_axis = 1.0 - LINE_STEP(abs(P.z) / fwidthPos.z - line_size);
+            out_color = mix(out_color, grid_axis_x_color, x_axis);
+        }
+        if (abs(P.x) < fwidthPos.x * axis_threshold) {
+            // Z-axis (blue)  
+            float z_axis = 1.0 - LINE_STEP(abs(P.x) / fwidthPos.x - line_size);
+            out_color = mix(out_color, grid_axis_z_color, z_axis);
+        }
+    } else if (grid_plane == 1) {
+        // YZ plane (X-axis view) - show Y and Z axes
+        // Y-axis (green) runs vertically when Z=0
+        if (abs(P.z) < fwidthPos.z * axis_threshold) {
+            float y_axis = 1.0 - LINE_STEP(abs(P.z) / fwidthPos.z - line_size);
+            out_color = mix(out_color, vec4(0.494, 0.753, 0.251, 1.0), y_axis);
+        }
+        // Z-axis (blue) runs horizontally when Y=0  
+        if (abs(P.y) < fwidthPos.y * axis_threshold) {
+            float z_axis = 1.0 - LINE_STEP(abs(P.y) / fwidthPos.y - line_size);
+            out_color = mix(out_color, grid_axis_z_color, z_axis);
+        }
+    } else {
+        // XY plane (Z-axis view) - show X and Y axes
+        // X-axis (red) runs horizontally when Y=0
+        if (abs(P.y) < fwidthPos.y * axis_threshold) {
+            float x_axis = 1.0 - LINE_STEP(abs(P.y) / fwidthPos.y - line_size);
+            out_color = mix(out_color, grid_axis_x_color, x_axis);
+        }
+        // Y-axis (green) runs vertically when X=0
+        if (abs(P.x) < fwidthPos.x * axis_threshold) {
+            float y_axis = 1.0 - LINE_STEP(abs(P.x) / fwidthPos.x - line_size);
+            out_color = mix(out_color, vec4(0.494, 0.753, 0.251, 1.0), y_axis);
+        }
     }
     
     // Apply overall fade

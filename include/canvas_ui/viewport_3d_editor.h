@@ -96,6 +96,12 @@ private:
     bool nav_handler_window_bound_ = false;
     bool show_fps_ = false;
     
+    // Vertical grid state
+    bool is_exact_side_view_ = false;  // Track if we're in an exact side view
+    int current_view_axis_ = -1;  // -1=none, 0=X, 1=Y, 2=Z
+    bool current_view_positive_ = true;  // Track if viewing from positive or negative direction
+    Camera3D::ProjectionType previous_projection_type_ = Camera3D::ProjectionType::Perspective;  // Store projection before switching to ortho
+    
     // Performance
     float frame_time_ = 0.0f;
     int frame_count_ = 0;
