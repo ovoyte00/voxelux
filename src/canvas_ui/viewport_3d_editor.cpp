@@ -130,8 +130,6 @@ bool Viewport3DEditor::handle_event(const InputEvent& event, const Rect2D& bound
             event.type == EventType::TRACKPAD_SCROLL ||
             event.type == EventType::TRACKPAD_PAN ||
             event.type == EventType::TRACKPAD_ZOOM) {
-            std::cout << "[Widget] EARLY BLOCK - trackpad gesture (type=" << static_cast<int>(event.type) 
-                      << ") blocked due to sphere " << sphere_clicked_ << " click pending" << std::endl;
             return true; // Consume to prevent any processing
         }
     }
@@ -151,11 +149,6 @@ bool Viewport3DEditor::handle_event(const InputEvent& event, const Rect2D& bound
                 float drag_threshold = 5.0f; // pixels
                 
                 if (dx * dx + dy * dy > drag_threshold * drag_threshold) {
-                    std::cout << "[Widget] Sphere drag detected - converting to orbit" << std::endl;
-                    std::cout << "[Widget] Current mouse pos: " << event.mouse_pos.x << ", " << event.mouse_pos.y << std::endl;
-                    std::cout << "[Widget] Original click pos: " << sphere_click_pos_.x << ", " << sphere_click_pos_.y << std::endl;
-                    std::cout << "[Widget] Camera pos at drag start: " << camera_.get_position().x << ", " 
-                              << camera_.get_position().y << ", " << camera_.get_position().z << std::endl;
                     
                     // User is dragging - convert to rotation
                     sphere_clicked_ = -1; // Clear sphere click FIRST to prevent any callbacks
@@ -197,7 +190,6 @@ bool Viewport3DEditor::handle_event(const InputEvent& event, const Rect2D& bound
             int clicked_sphere = nav_widget_->hit_test(event.mouse_pos);
             if (clicked_sphere >= 0) {
                 // Clicked on a sphere - store for potential drag detection
-                std::cout << "[Widget] Sphere " << clicked_sphere << " clicked - waiting to detect click vs drag" << std::endl;
                 sphere_clicked_ = clicked_sphere;
                 sphere_click_pos_ = event.mouse_pos;
                 return true; // Consume event
@@ -225,7 +217,6 @@ bool Viewport3DEditor::handle_event(const InputEvent& event, const Rect2D& bound
                 int axis = sphere_clicked_ / 2;  // 0,1 = X, 2,3 = Y, 4,5 = Z
                 bool positive = (sphere_clicked_ % 2) == 0;
                 
-                std::cout << "[Widget] Sphere click released - setting axis view (axis=" << axis << ", positive=" << positive << ")" << std::endl;
                 
                 // Trigger the axis click callback
                 if (nav_widget_->get_axis_click_callback()) {
@@ -341,9 +332,6 @@ void Viewport3DEditor::setup_nav_widget() {
             // Handle axis clicks to set standard views (keep current projection type)
             // Using right-handed coordinate system: +Y up, +X right, +Z towards viewer
             // Note: Orthographic is a separate toggle, not triggered by navigation
-            std::cout << "[Widget] Axis click callback triggered - axis=" << axis << ", positive=" << positive << std::endl;
-            std::cout << "[Widget] Camera position BEFORE: " << camera_.get_position().x << ", " 
-                      << camera_.get_position().y << ", " << camera_.get_position().z << std::endl;
             
             float view_distance = 60.0f;
             
@@ -351,9 +339,6 @@ void Viewport3DEditor::setup_nav_widget() {
             // Only store if we're not already in an axis view
             if (current_view_axis_ == -1) {
                 previous_projection_type_ = camera_.get_projection_type();
-                std::cout << "[Widget] Storing previous projection: " 
-                          << (previous_projection_type_ == Camera3D::ProjectionType::Perspective ? "Perspective" : "Orthographic") 
-                          << std::endl;
             }
             
             // Update view state tracking
@@ -367,14 +352,11 @@ void Viewport3DEditor::setup_nav_widget() {
             camera_.set_near_plane(0.1f);
             camera_.set_far_plane(10000.0f);  // Large far plane to include grids
             
-            std::cout << "[Widget] Switched to Orthographic for axis view" << std::endl;
-            
             if (axis == 0) { // X axis - Right/Left view
                 // Looking along X axis - show YZ plane
                 camera_.set_axis_view(positive ? Camera3D::AxisView::Right : Camera3D::AxisView::Left, view_distance);
                 
                 if (grid_3d_) {
-                    std::cout << "[Viewport] X-axis view: Enabling YZ vertical grid" << std::endl;
                     grid_3d_->set_active_plane(Grid3DRenderer::PLANE_YZ);
                     grid_3d_->enable_vertical_grid(true);
                 }
@@ -390,14 +372,10 @@ void Viewport3DEditor::setup_nav_widget() {
                 camera_.set_axis_view(positive ? Camera3D::AxisView::Front : Camera3D::AxisView::Back, view_distance);
                 
                 if (grid_3d_) {
-                    std::cout << "[Viewport] Z-axis view: Enabling XY vertical grid" << std::endl;
                     grid_3d_->set_active_plane(Grid3DRenderer::PLANE_XY);
                     grid_3d_->enable_vertical_grid(true);
                 }
             }
-            
-            std::cout << "[Widget] Camera position AFTER: " << camera_.get_position().x << ", " 
-                      << camera_.get_position().y << ", " << camera_.get_position().z << std::endl;
         });
     }
 }
@@ -431,14 +409,8 @@ bool Viewport3DEditor::handle_camera_navigation(const InputEvent& event, const R
     if (event.type == EventType::TRACKPAD_ROTATE || 
         (event.type == EventType::MOUSE_PRESS && event.mouse_button == MouseButton::MIDDLE && !event.has_modifier(KeyModifier::SHIFT))) {
         
-        std::cout << "[Viewport] Orbit event detected. is_exact_side_view=" << is_exact_side_view_ 
-                  << ", current_view_axis=" << current_view_axis_ << std::endl;
-        
         // User is starting to orbit/rotate the camera
         if (current_view_axis_ != -1) {  // We're in an axis view
-            std::cout << "[Viewport] Disabling vertical grid and restoring " 
-                      << (previous_projection_type_ == Camera3D::ProjectionType::Perspective ? "Perspective" : "Orthographic")
-                      << " - camera rotation started" << std::endl;
             
             // Restore previous projection mode (usually perspective)
             camera_.set_projection_type(previous_projection_type_);
@@ -463,15 +435,10 @@ bool Viewport3DEditor::handle_camera_navigation(const InputEvent& event, const R
         (event.type == EventType::TRACKPAD_SCROLL && 
          (event.has_modifier(KeyModifier::SHIFT) || event.has_modifier(KeyModifier::CMD) || event.has_modifier(KeyModifier::CTRL)))) {
         if (sphere_clicked_ >= 0) {
-            std::cout << "[Widget] Clearing sphere click - user started navigation" << std::endl;
             sphere_clicked_ = -1;  // Clear pending sphere click
         }
     }
     
-    // Debug: Only log important events
-    if (event.type == EventType::MOUSE_PRESS || event.type == EventType::MOUSE_WHEEL) {
-        std::cout << "3D Viewport received " << (event.type == EventType::MOUSE_PRESS ? "MOUSE_PRESS" : "MOUSE_WHEEL") << std::endl;
-    }
     
     // Update navigation handler with current viewport bounds
     nav_handler_->set_viewport_bounds(bounds);
@@ -480,9 +447,6 @@ bool Viewport3DEditor::handle_camera_navigation(const InputEvent& event, const R
     EventResult result = nav_handler_->handle_event(event);
     
     if (result == EventResult::HANDLED) {
-        if (event.type == EventType::MOUSE_PRESS || event.type == EventType::MOUSE_WHEEL) {
-            std::cout << "Navigation processed " << (event.type == EventType::MOUSE_PRESS ? "click" : "wheel") << std::endl;
-        }
         return true;
     }
     

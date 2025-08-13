@@ -597,17 +597,6 @@ void CanvasWindow::on_mouse_scroll(double x_offset, double y_offset) {
     // 'now' is already defined above
     
     if (has_native_event) {
-        // Debug native event
-        static int native_debug = 0;
-        // Log native events to debug device detection
-        if (native_debug++ % 10 == 0) {  // Log every 10th event
-            std::cout << "[Native Event] dx=" << native_event.delta_x 
-                      << " dy=" << native_event.delta_y 
-                      << " device=" << static_cast<int>(native_event.device_type)
-                      << " pinch=" << native_event.is_pinch 
-                      << " precise=" << native_event.is_precise
-                      << " momentum=" << native_event.is_momentum << std::endl;
-        }
         // NEVER allow momentum events to start a new gesture
         // Momentum can only continue an existing gesture
         if (native_event.is_momentum && current_gesture_ == GestureType::None) {
@@ -711,7 +700,6 @@ void CanvasWindow::on_mouse_scroll(double x_offset, double y_offset) {
     // Check if gesture has timed out
     if (time_since_last_scroll > GESTURE_TIMEOUT) {
         current_gesture_ = GestureType::None;
-        std::cout << "[Gesture] Timeout - resetting gesture type" << std::endl;
     }
     
     EventType event_type;
@@ -726,21 +714,18 @@ void CanvasWindow::on_mouse_scroll(double x_offset, double y_offset) {
         if (current_gesture_ != GestureType::None) {
             // For zoom gesture, immediately stop ALL processing if CMD/CTRL is released
             if (current_gesture_ == GestureType::Zoom && !cmd_ctrl_held) {
-                std::cout << "[Gesture] CMD/CTRL released - STOPPING all scroll processing" << std::endl;
                 current_gesture_ = GestureType::None;
                 // Don't process this event at all - discard it
                 return;
             }
             // For pan gesture, immediately stop ALL processing if shift is released  
             else if (current_gesture_ == GestureType::Pan && !shift_held) {
-                std::cout << "[Gesture] Shift released - STOPPING all scroll processing" << std::endl;
                 current_gesture_ = GestureType::None;
                 // Don't process this event at all - discard it
                 return;
             }
             // For rotate gesture, check if modifiers were pressed (user wants different mode)
             else if (current_gesture_ == GestureType::Rotate && (cmd_ctrl_held || shift_held)) {
-                std::cout << "[Gesture] Modifier pressed during rotation - STOPPING gesture" << std::endl;
                 current_gesture_ = GestureType::None;
                 // Don't process this event - require fresh start
                 return;
@@ -750,15 +735,12 @@ void CanvasWindow::on_mouse_scroll(double x_offset, double y_offset) {
                 switch (current_gesture_) {
                     case GestureType::Pan:
                         event_type = EventType::TRACKPAD_PAN;
-                        std::cout << "[Gesture] Maintaining PAN gesture" << std::endl;
                         break;
                     case GestureType::Zoom:
                         event_type = EventType::TRACKPAD_SCROLL;
-                        std::cout << "[Gesture] Maintaining ZOOM gesture" << std::endl;
                         break;
                     case GestureType::Rotate:
                         event_type = EventType::TRACKPAD_ROTATE;
-                        std::cout << "[Gesture] Maintaining ROTATE gesture" << std::endl;
                         break;
                     default:
                         event_type = EventType::TRACKPAD_ROTATE;
@@ -773,18 +755,15 @@ void CanvasWindow::on_mouse_scroll(double x_offset, double y_offset) {
                 // Shift + trackpad surface = pan
                 event_type = EventType::TRACKPAD_PAN;
                 current_gesture_ = GestureType::Pan;
-                std::cout << "[Gesture] Starting PAN gesture" << std::endl;
             } else if (cmd_ctrl_held) {
                 // CMD/CTRL + trackpad = zoom (keep as scroll for handler to process)
                 event_type = EventType::TRACKPAD_SCROLL;
                 current_gesture_ = GestureType::Zoom;
-                std::cout << "[Gesture] Starting ZOOM gesture" << std::endl;
             } else {
                 // No modifiers with trackpad = rotation (orbit camera)
                 // Two-finger scroll without modifiers is the standard rotation gesture
                 event_type = EventType::TRACKPAD_ROTATE;
                 current_gesture_ = GestureType::Rotate;
-                std::cout << "[Gesture] Starting ROTATE gesture" << std::endl;
             }
         }
     } else {
@@ -863,20 +842,12 @@ void CanvasWindow::on_key_event(int key, int scancode, int action, int mods) {
     uint32_t prev_modifiers = keyboard_modifiers_;
     keyboard_modifiers_ = static_cast<uint32_t>(mods);
     
-    // Debug: Log key events especially shift
+    // Handle shift key changes
     if (key == GLFW_KEY_LEFT_SHIFT || key == GLFW_KEY_RIGHT_SHIFT) {
-        const char* action_str = (action == GLFW_PRESS) ? "PRESS" : 
-                                 (action == GLFW_RELEASE) ? "RELEASE" : "REPEAT";
-        
-        std::cout << "[KEY] SHIFT " << action_str 
-                  << " time=" << glfwGetTime() << std::endl;
-        
         // Clear pending scroll events on both press and release
         if (action == GLFW_PRESS || action == GLFW_RELEASE) {
             // Clear ALL pending native scroll events using the dedicated method
             voxelux::platform::NativeInput::clear_scroll_events();
-            std::cout << "[KEY] Cleared native scroll event queue on shift " 
-                      << action_str << std::endl;
             
             // Also set a flag to ignore scroll events for a brief period
             // This prevents any in-flight events from being processed

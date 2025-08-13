@@ -292,12 +292,6 @@ Matrix4x4 Matrix4x4::look_at(const Vector3D& eye, const Vector3D& target, const 
     Vector3D right = up.cross(forward).normalized();
     Vector3D actual_up = forward.cross(right);
     
-    // Debug output - always print for Z-axis view
-    std::cout << "[Matrix4x4::look_at] eye=(" << eye.x << "," << eye.y << "," << eye.z 
-              << ") target=(" << target.x << "," << target.y << "," << target.z << ")" << std::endl;
-    std::cout << "[Matrix4x4::look_at] forward=(" << forward.x << "," << forward.y << "," << forward.z << ")" << std::endl;
-    std::cout << "[Matrix4x4::look_at] right=(" << right.x << "," << right.y << "," << right.z << ")" << std::endl;
-    std::cout << "[Matrix4x4::look_at] actual_up=(" << actual_up.x << "," << actual_up.y << "," << actual_up.z << ")" << std::endl;
     
     Matrix4x4 result;
     
@@ -629,30 +623,18 @@ void Camera3D::dolly(float distance) {
 }
 
 void Camera3D::rotate_around_target(float horizontal_angle, float vertical_angle) {
-    std::cout << "[Camera3D] rotate_around_target called - h_angle=" << horizontal_angle 
-              << ", v_angle=" << vertical_angle << std::endl;
-    std::cout << "[Camera3D] Position before: " << position_.x << ", " << position_.y << ", " << position_.z << std::endl;
-    
     // Apply rotations separately for turntable navigation
     orbit_horizontal(horizontal_angle);
     orbit_vertical(vertical_angle);
-    
-    std::cout << "[Camera3D] Position after: " << position_.x << ", " << position_.y << ", " << position_.z << std::endl;
 }
 
 void Camera3D::look_at(const Vector3D& target, const Vector3D& up) {
-    std::cout << "[Camera3D] look_at called - target=(" << target.x << ", " << target.y << ", " << target.z 
-              << "), up=(" << up.x << ", " << up.y << ", " << up.z << ")" << std::endl;
-    std::cout << "[Camera3D] Position: " << position_.x << ", " << position_.y << ", " << position_.z << std::endl;
     
     target_ = target;
     up_vector_ = up.normalized();
     
     Vector3D forward = (target - position_).normalized();
-    std::cout << "[Camera3D] Forward vector: " << forward.x << ", " << forward.y << ", " << forward.z << std::endl;
-    
     rotation_ = Quaternion::look_rotation(forward, up_vector_);
-    std::cout << "[Camera3D] Resulting quaternion: " << rotation_.x << ", " << rotation_.y << ", " << rotation_.z << ", " << rotation_.w << std::endl;
     
     if (navigation_mode_ == NavigationMode::Orbit) {
         orbit_target_ = target;
@@ -830,8 +812,6 @@ void Camera3D::update_orbit_from_position() {
     CameraUtils::cartesian_to_spherical(to_camera, distance_, horizontal_angle_, vertical_angle_);
     vertical_angle_ = PI * 0.5f - vertical_angle_; // Convert to elevation angle
     
-    std::cout << "[Camera3D] update_orbit_from_position: to_camera=(" << to_camera.x << "," << to_camera.y << "," << to_camera.z 
-              << "), h_angle=" << horizontal_angle_ << ", v_angle=" << vertical_angle_ << std::endl;
     
     // For turntable mode, build quaternion from scratch without look_rotation
     if (use_turntable_) {
@@ -848,7 +828,6 @@ void Camera3D::update_orbit_from_position() {
         rotation_ = x_rot * rotation_;
         
         rotation_ = rotation_.normalized();
-        std::cout << "[Camera3D] Built quaternion from angles: " << rotation_.x << "," << rotation_.y << "," << rotation_.z << "," << rotation_.w << std::endl;
     }
 }
 
@@ -882,31 +861,15 @@ void Camera3D::update_cached_matrices() const {
             // Build view matrix directly from quaternion for turntable mode
             // The view matrix transforms from world to camera space
             
-            std::cout << "[Camera3D] Building view matrix from quaternion: " 
-                      << rotation_.x << ", " << rotation_.y << ", " << rotation_.z << ", " << rotation_.w << std::endl;
-            
             // Rotation part: conjugate of view quaternion to invert the rotation
             Matrix4x4 rot_matrix = Matrix4x4::rotation(rotation_.conjugate());
-            
-            std::cout << "[Camera3D] Rotation matrix:" << std::endl;
-            std::cout << "  [" << rot_matrix.m[0][0] << ", " << rot_matrix.m[0][1] << ", " << rot_matrix.m[0][2] << "]" << std::endl;
-            std::cout << "  [" << rot_matrix.m[1][0] << ", " << rot_matrix.m[1][1] << ", " << rot_matrix.m[1][2] << "]" << std::endl;
-            std::cout << "  [" << rot_matrix.m[2][0] << ", " << rot_matrix.m[2][1] << ", " << rot_matrix.m[2][2] << "]" << std::endl;
             
             // Translation part: negative position in world space
             Matrix4x4 trans_matrix = Matrix4x4::translation(Vector3D(-position_.x, -position_.y, -position_.z));
             
             // Combine: first translate, then rotate (standard view matrix order)
             cached_view_matrix_ = rot_matrix * trans_matrix;
-            
-            std::cout << "[Camera3D] Final view matrix:" << std::endl;
-            std::cout << "  [" << cached_view_matrix_.m[0][0] << ", " << cached_view_matrix_.m[0][1] 
-                      << ", " << cached_view_matrix_.m[0][2] << ", " << cached_view_matrix_.m[0][3] << "]" << std::endl;
         } else {
-            // Debug the parameters
-            std::cout << "[Camera3D] Calling look_at with position=(" << position_.x << "," << position_.y << "," << position_.z 
-                      << ") target=(" << target_.x << "," << target_.y << "," << target_.z 
-                      << ") up=(" << up_vector_.x << "," << up_vector_.y << "," << up_vector_.z << ")" << std::endl;
             cached_view_matrix_ = Matrix4x4::look_at(position_, target_, up_vector_);
         }
         view_matrix_dirty_ = false;
@@ -921,9 +884,6 @@ void Camera3D::update_cached_matrices() const {
             float right = half_size * aspect_ratio_;
             float bottom = -half_size;
             float top = half_size;
-            std::cout << "[Camera3D] Orthographic projection: left=" << left << ", right=" << right 
-                      << ", bottom=" << bottom << ", top=" << top 
-                      << ", near=" << near_plane_ << ", far=" << far_plane_ << std::endl;
             cached_projection_matrix_ = Matrix4x4::orthographic(left, right, bottom, top, near_plane_, far_plane_);
         }
         projection_matrix_dirty_ = false;

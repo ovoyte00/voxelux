@@ -77,8 +77,6 @@ bool ViewportNavigationHandler::can_handle(const InputEvent& event) const {
 EventResult ViewportNavigationHandler::handle_event(const InputEvent& event) {
     // Check if we should handle this event
     if (!can_handle(event) || !navigator_ || !camera_) {
-        if (!navigator_) std::cout << "[NavHandler] No navigator!" << std::endl;
-        if (!camera_) std::cout << "[NavHandler] No camera!" << std::endl;
         return EventResult::IGNORED;
     }
     
@@ -107,21 +105,14 @@ EventResult ViewportNavigationHandler::handle_event(const InputEvent& event) {
         bool cmd_held = event.has_modifier(KeyModifier::CMD);
         bool ctrl_held = event.has_modifier(KeyModifier::CTRL);
         
-        std::cout << "[MOD_DEBUG] MODIFIER_CHANGE - shift=" << shift_held 
-                  << ", cmd=" << cmd_held << ", ctrl=" << ctrl_held
-                  << ", current_mode=" << static_cast<int>(current_mode_)
-                  << ", nav_mode=" << (navigator_ ? static_cast<int>(navigator_->get_mode()) : -1)
-                  << std::endl;
         
         // Check if shift was released during pan
         if (!shift_held && navigator_->get_mode() == voxelux::canvas_ui::ViewportNavigator::NavigationMode::PAN) {
-            std::cout << "[MOD_DEBUG] Shift released - ending PAN mode" << std::endl;
             navigator_->end_pan();
             current_mode_ = NavigationMode::None;
         }
         // Check if shift was pressed during orbit - switch to pan
         if (shift_held && navigator_->get_mode() == voxelux::canvas_ui::ViewportNavigator::NavigationMode::ORBIT) {
-            std::cout << "[MOD_DEBUG] Shift pressed - switching from ROTATE to PAN" << std::endl;
             navigator_->end_orbit();
             navigator_->start_pan(glm::vec2(last_mouse_pos_.x, last_mouse_pos_.y));
             current_mode_ = NavigationMode::Pan;
@@ -129,7 +120,6 @@ EventResult ViewportNavigationHandler::handle_event(const InputEvent& event) {
         
         // Check if CMD/CTRL was released while we were zooming
         if (!cmd_held && !ctrl_held && current_mode_ == NavigationMode::Zoom) {
-            std::cout << "[MOD_DEBUG] CMD/CTRL released - STOPPING ALL ZOOM PROCESSING" << std::endl;
             current_mode_ = NavigationMode::None;
             
             // Clear any accumulated zoom delta
@@ -141,12 +131,10 @@ EventResult ViewportNavigationHandler::handle_event(const InputEvent& event) {
                 navigator_->clear_momentum();
             }
             
-            std::cout << "[MOD_DEBUG] Cleared all zoom state and momentum" << std::endl;
         }
         
         // Also handle shift release during pan
         if (!shift_held && current_mode_ == NavigationMode::Pan) {
-            std::cout << "[MOD_DEBUG] Shift released - STOPPING ALL PAN PROCESSING" << std::endl;
             current_mode_ = NavigationMode::None;
             
             // End pan in navigator
@@ -176,17 +164,14 @@ EventResult ViewportNavigationHandler::handle_event(const InputEvent& event) {
                 
                 // End any other navigation mode first
                 if (navigator_->get_mode() == voxelux::canvas_ui::ViewportNavigator::NavigationMode::ORBIT) {
-                    std::cout << "[NavDebug] Ending ORBIT mode to start PAN (trackpad pan event)" << std::endl;
                     navigator_->end_orbit();
                 } else if (current_mode_ == NavigationMode::Zoom) {
                     // Clear zoom mode
-                    std::cout << "[NavDebug] Ending ZOOM mode to start PAN (trackpad pan event)" << std::endl;
                     current_mode_ = NavigationMode::None;
                 }
                 
                 // Start pan if not already panning
                 if (navigator_->get_mode() != voxelux::canvas_ui::ViewportNavigator::NavigationMode::PAN) {
-                    std::cout << "[NavDebug] Starting PAN mode (trackpad two-finger pan)" << std::endl;
                     navigator_->start_pan(mouse_pos);
                     current_mode_ = NavigationMode::Pan;
                 }
@@ -199,8 +184,6 @@ EventResult ViewportNavigationHandler::handle_event(const InputEvent& event) {
                     // With natural scrolling, invert the deltas so pan follows finger movement
                     pan_delta = -mouse_delta;
                 }
-                std::cout << "[NavDebug] PAN update - raw delta: (" << mouse_delta.x << ", " << mouse_delta.y 
-                          << "), adjusted delta: (" << pan_delta.x << ", " << pan_delta.y << ")" << std::endl;
                 navigator_->update_pan_delta(pan_delta, 0.016f);  // ~60 FPS delta time
                 return EventResult::HANDLED;
             }
@@ -221,13 +204,11 @@ EventResult ViewportNavigationHandler::handle_event(const InputEvent& event) {
                 if (!shift_held && !cmd_ctrl_held) {
                     // End any pan operation first
                     if (navigator_->get_mode() == voxelux::canvas_ui::ViewportNavigator::NavigationMode::PAN) {
-                        std::cout << "[NavDebug] Ending PAN mode to start ROTATE" << std::endl;
                         navigator_->end_pan();
                     }
                     
                     // Start orbit if not already orbiting
                     if (navigator_->get_mode() != voxelux::canvas_ui::ViewportNavigator::NavigationMode::ORBIT) {
-                        std::cout << "[NavDebug] Starting ROTATE mode (trackpad/smart mouse gesture)" << std::endl;
                         navigator_->start_orbit(mouse_pos);
                         current_mode_ = NavigationMode::Orbit;
                         last_mouse_pos_ = event.mouse_pos;  // Reset tracking position
@@ -262,15 +243,12 @@ EventResult ViewportNavigationHandler::handle_event(const InputEvent& event) {
                 
                 // End any active navigation first
                 if (navigator_->get_mode() == voxelux::canvas_ui::ViewportNavigator::NavigationMode::PAN) {
-                    std::cout << "[NavDebug] Ending PAN mode for ZOOM (pinch gesture)" << std::endl;
                     navigator_->end_pan();
                 } else if (navigator_->get_mode() == voxelux::canvas_ui::ViewportNavigator::NavigationMode::ORBIT) {
-                    std::cout << "[NavDebug] Ending ROTATE mode for ZOOM (pinch gesture)" << std::endl;
                     navigator_->end_orbit();
                 }
                 
                 // Pass raw delta - navigator handles sensitivity
-                std::cout << "[NavDebug] ZOOM (pinch) - delta: " << event.wheel_delta << std::endl;
                 navigator_->zoom(event.wheel_delta, mouse_pos);
                 current_mode_ = NavigationMode::Zoom;
                 return EventResult::HANDLED;
@@ -290,7 +268,6 @@ EventResult ViewportNavigationHandler::handle_event(const InputEvent& event) {
                     // - Trackpad: Shift + two-finger scroll
                     // - Smart Mouse: Shift + one-finger scroll
                     if (navigator_->get_mode() != voxelux::canvas_ui::ViewportNavigator::NavigationMode::PAN) {
-                        std::cout << "[NavDebug] Starting PAN mode (shift + trackpad/smart mouse scroll)" << std::endl;
                         navigator_->start_pan(mouse_pos);
                         current_mode_ = NavigationMode::Pan;
                     }
@@ -306,13 +283,11 @@ EventResult ViewportNavigationHandler::handle_event(const InputEvent& event) {
                     }
                     
                     glm::vec2 pan_delta(pan_x, pan_y);
-                    std::cout << "[NavDebug] PAN (shift+scroll) - delta: (" << pan_x << ", " << pan_y << ")" << std::endl;
                     navigator_->update_pan_delta(pan_delta, 0.016f);
                 } else if (cmd_ctrl_held) {
                     // CMD/CTRL + trackpad/smart mouse scroll = Zoom (vertical only)
                     // Always end any active orbit when CMD/CTRL is detected
                     if (navigator_->get_mode() == voxelux::canvas_ui::ViewportNavigator::NavigationMode::ORBIT) {
-                        std::cout << "[NavDebug] Ending ORBIT mode for ZOOM (CMD/CTRL detected)" << std::endl;
                         navigator_->end_orbit();
                         current_mode_ = NavigationMode::None;
                     }
@@ -328,7 +303,6 @@ EventResult ViewportNavigationHandler::handle_event(const InputEvent& event) {
                         accumulated_zoom_delta_ = 0.0f;
                         // End any active navigation modes when starting fresh zoom
                         if (navigator_->get_mode() == voxelux::canvas_ui::ViewportNavigator::NavigationMode::PAN) {
-                            std::cout << "[NavDebug] Ending PAN mode for ZOOM (CMD/CTRL + scroll)" << std::endl;
                             navigator_->end_pan();
                         }
                     }
@@ -369,13 +343,10 @@ EventResult ViewportNavigationHandler::handle_event(const InputEvent& event) {
                     // Debug: show accumulation
                     static int zoom_debug_count = 0;
                     if (++zoom_debug_count % 10 == 0) {  // Log every 10th event
-                        std::cout << "[NavDebug] ZOOM accumulating - delta: " << zoom_delta 
-                                  << ", accumulated: " << accumulated_zoom_delta_ << std::endl;
                     }
                     
                     // Only zoom if we've accumulated enough delta
                     if (std::abs(accumulated_zoom_delta_) >= MIN_ZOOM_DELTA) {
-                        std::cout << "[NavDebug] ZOOM executing - accumulated delta: " << accumulated_zoom_delta_ << std::endl;
                         navigator_->zoom(accumulated_zoom_delta_, mouse_pos);
                         current_mode_ = NavigationMode::Zoom;
                         accumulated_zoom_delta_ = 0.0f;  // Reset after zooming
@@ -402,15 +373,12 @@ EventResult ViewportNavigationHandler::handle_event(const InputEvent& event) {
                     // No modifiers = Zoom
                     // End any active navigation first
                     if (navigator_->get_mode() == voxelux::canvas_ui::ViewportNavigator::NavigationMode::PAN) {
-                        std::cout << "[NavDebug] Ending PAN mode for ZOOM (mouse wheel)" << std::endl;
                         navigator_->end_pan();
                     } else if (navigator_->get_mode() == voxelux::canvas_ui::ViewportNavigator::NavigationMode::ORBIT) {
-                        std::cout << "[NavDebug] Ending ROTATE mode for ZOOM (mouse wheel)" << std::endl;
                         navigator_->end_orbit();
                     }
                     
                     // Pass raw delta - navigator handles sensitivity
-                    std::cout << "[NavDebug] ZOOM (mouse wheel) - delta: " << event.wheel_delta << std::endl;
                     navigator_->zoom(event.wheel_delta, mouse_pos);
                     current_mode_ = NavigationMode::Zoom;
                     return EventResult::HANDLED;
@@ -427,13 +395,11 @@ EventResult ViewportNavigationHandler::handle_event(const InputEvent& event) {
                     
                     if (shift_held) {
                         // Shift + Middle Mouse = Pan
-                        std::cout << "[NavDebug] Starting PAN mode (shift + middle mouse)" << std::endl;
                         navigator_->start_pan(mouse_pos);
                         current_mode_ = NavigationMode::Pan;
                         is_dragging_ = true;
                     } else {
                         // Middle Mouse = Orbit
-                        std::cout << "[NavDebug] Starting ROTATE mode (middle mouse)" << std::endl;
                         
                         // Store initial position for restoration
                         drag_start_pos_ = Point2D(mouse_pos.x, mouse_pos.y);
@@ -459,10 +425,8 @@ EventResult ViewportNavigationHandler::handle_event(const InputEvent& event) {
                 // End navigation on mouse release
                 if (event.mouse_button == MouseButton::MIDDLE && is_dragging_) {
                     if (navigator_->get_mode() == voxelux::canvas_ui::ViewportNavigator::NavigationMode::PAN) {
-                        std::cout << "[NavDebug] Ending PAN mode (mouse release)" << std::endl;
                         navigator_->end_pan();
                     } else if (navigator_->get_mode() == voxelux::canvas_ui::ViewportNavigator::NavigationMode::ORBIT) {
-                        std::cout << "[NavDebug] Ending ROTATE mode (mouse release)" << std::endl;
                         navigator_->end_orbit();
                         
                         // Release cursor and restore position
@@ -482,10 +446,8 @@ EventResult ViewportNavigationHandler::handle_event(const InputEvent& event) {
                 // Update navigation if dragging
                 if (is_dragging_) {
                     if (navigator_->get_mode() == voxelux::canvas_ui::ViewportNavigator::NavigationMode::PAN) {
-                        std::cout << "[NavDebug] PAN update (mouse move) - pos: (" << mouse_pos.x << ", " << mouse_pos.y << ")" << std::endl;
                         navigator_->update_pan(mouse_pos, 0.016f);
                     } else if (navigator_->get_mode() == voxelux::canvas_ui::ViewportNavigator::NavigationMode::ORBIT) {
-                        std::cout << "[NavDebug] ROTATE update (mouse move) - pos: (" << mouse_pos.x << ", " << mouse_pos.y << ")" << std::endl;
                         navigator_->update_orbit(mouse_pos, 0.016f);
                     }
                     return EventResult::HANDLED;
@@ -599,10 +561,6 @@ void ViewportNavigationHandler::print_current_state() const {
         default: break;
     }
     
-    std::cout << "[NavDebug] === Current State ===" << std::endl;
-    std::cout << "[NavDebug] Mode: " << mode_str << std::endl;
-    std::cout << "[NavDebug] Device: " << device_str << std::endl;
-    std::cout << "[NavDebug] Dragging: " << (is_dragging_ ? "Yes" : "No") << std::endl;
     
     if (navigator_) {
         auto nav_mode = navigator_->get_mode();
@@ -620,10 +578,8 @@ void ViewportNavigationHandler::print_current_state() const {
             default:
                 break;
         }
-        std::cout << "[NavDebug] Navigator Mode: " << nav_mode_str << std::endl;
     }
     
-    std::cout << "[NavDebug] ===================" << std::endl;
 }
 
 const char* ViewportNavigationHandler::get_mode_string() const {

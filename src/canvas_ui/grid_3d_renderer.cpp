@@ -212,7 +212,6 @@ bool Grid3DRenderer::create_grid_geometries() {
         -size,  size, 0.0f,  0.0f, 1.0f   // top-left
     };
     
-    std::cout << "[Grid3D] Creating XY plane vertices at Z=0 with size " << (size*2) << "x" << (size*2) << std::endl;
     
     unsigned int indices[] = {
         0, 1, 2,
@@ -228,9 +227,6 @@ bool Grid3DRenderer::create_grid_geometries() {
     glGenBuffers(1, &vbo_xy_);
     glGenBuffers(1, &ebo_);
     
-    std::cout << "[Grid3D] Generated VAOs: XZ=" << vao_xz_ 
-              << ", YZ=" << vao_yz_ 
-              << ", XY=" << vao_xy_ << std::endl;
     
     // Upload index data (shared)
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo_);
@@ -256,14 +252,6 @@ bool Grid3DRenderer::create_grid_geometries() {
     glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3 * sizeof(float)));
     glEnableVertexAttribArray(1);
     
-    // Debug: Print the actual vertices being uploaded
-    std::cout << "[Grid3D] YZ plane vertices:" << std::endl;
-    for (int i = 0; i < 4; i++) {
-        std::cout << "  Vertex " << i << ": (" 
-                  << vertices_yz[i*5] << ", " 
-                  << vertices_yz[i*5+1] << ", " 
-                  << vertices_yz[i*5+2] << ")" << std::endl;
-    }
     
     // Setup XY plane
     glBindVertexArray(vao_xy_);
@@ -275,19 +263,6 @@ bool Grid3DRenderer::create_grid_geometries() {
     glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3 * sizeof(float)));
     glEnableVertexAttribArray(1);
     
-    // Debug: Print the actual vertices being uploaded
-    std::cout << "[Grid3D] XY plane vertices:" << std::endl;
-    for (int i = 0; i < 4; i++) {
-        std::cout << "  Vertex " << i << ": (" 
-                  << vertices_xy[i*5] << ", " 
-                  << vertices_xy[i*5+1] << ", " 
-                  << vertices_xy[i*5+2] << ")" << std::endl;
-    }
-    
-    // Debug: Check the buffer was uploaded
-    GLint buffer_size = 0;
-    glGetBufferParameteriv(GL_ARRAY_BUFFER, GL_BUFFER_SIZE, &buffer_size);
-    std::cout << "[Grid3D] XY plane buffer size: " << buffer_size << " bytes (expected " << sizeof(vertices_xy) << ")" << std::endl;
     
     // Unbind
     glBindBuffer(GL_ARRAY_BUFFER, 0);
@@ -305,12 +280,6 @@ void Grid3DRenderer::render(const Camera3D& camera, const Rect2D& viewport, cons
     // Set OpenGL viewport to match the rendering region
     glViewport(viewport.x, viewport.y, viewport.width, viewport.height);
     
-    // Debug viewport
-    static int debug_counter = 0;
-    if (debug_counter++ % 60 == 0) {
-        std::cout << "[Grid3D] Viewport: " << viewport.x << ", " << viewport.y 
-                  << ", " << viewport.width << ", " << viewport.height << std::endl;
-    }
     
     // Clear depth buffer before rendering grids
     glClear(GL_DEPTH_BUFFER_BIT);
@@ -338,23 +307,6 @@ void Grid3DRenderer::render(const Camera3D& camera, const Rect2D& viewport, cons
     Matrix4x4 view_matrix = camera.get_view_matrix();
     Matrix4x4 projection_matrix = camera.get_projection_matrix();
     
-    // Debug projection matrix for vertical grids
-    if (show_vertical_grid_ && debug_counter % 60 == 0) {
-        std::cout << "[Grid3D] Projection matrix:" << std::endl;
-        std::cout << "  [" << projection_matrix.m[0][0] << ", " << projection_matrix.m[0][1] << ", " << projection_matrix.m[0][2] << ", " << projection_matrix.m[0][3] << "]" << std::endl;
-        std::cout << "  [" << projection_matrix.m[1][0] << ", " << projection_matrix.m[1][1] << ", " << projection_matrix.m[1][2] << ", " << projection_matrix.m[1][3] << "]" << std::endl;
-        std::cout << "  [" << projection_matrix.m[2][0] << ", " << projection_matrix.m[2][1] << ", " << projection_matrix.m[2][2] << ", " << projection_matrix.m[2][3] << "]" << std::endl;
-        std::cout << "  [" << projection_matrix.m[3][0] << ", " << projection_matrix.m[3][1] << ", " << projection_matrix.m[3][2] << ", " << projection_matrix.m[3][3] << "]" << std::endl;
-    }
-    
-    // Debug view matrix
-    if (debug_counter % 60 == 0) {
-        std::cout << "[Grid3D] View matrix before upload:" << std::endl;
-        std::cout << "  [" << view_matrix.m[0][0] << ", " << view_matrix.m[0][1] << ", " << view_matrix.m[0][2] << ", " << view_matrix.m[0][3] << "]" << std::endl;
-        std::cout << "  [" << view_matrix.m[1][0] << ", " << view_matrix.m[1][1] << ", " << view_matrix.m[1][2] << ", " << view_matrix.m[1][3] << "]" << std::endl;
-        std::cout << "  [" << view_matrix.m[2][0] << ", " << view_matrix.m[2][1] << ", " << view_matrix.m[2][2] << ", " << view_matrix.m[2][3] << "]" << std::endl;
-        std::cout << "  [" << view_matrix.m[3][0] << ", " << view_matrix.m[3][1] << ", " << view_matrix.m[3][2] << ", " << view_matrix.m[3][3] << "]" << std::endl;
-    }
     
     // Create model matrix for grid scaling
     Matrix4x4 model_matrix = Matrix4x4::scale({dynamic_grid_size/grid_scale_, 1.0f, dynamic_grid_size/grid_scale_});
@@ -398,11 +350,6 @@ void Grid3DRenderer::render(const Camera3D& camera, const Rect2D& viewport, cons
     
     // Render vertical grid FIRST if enabled (so horizontal grid doesn't cover it)
     if (show_vertical_grid_) {
-        // Only log once per second to avoid spam
-        static int frame_counter = 0;
-        if (frame_counter++ % 60 == 0) {
-            std::cout << "[Grid3D] Rendering vertical grid, active_plane=" << active_plane_ << std::endl;
-        }
         
         // Render the appropriate vertical plane based on view
         Matrix4x4 vertical_model = Matrix4x4::identity();
@@ -410,40 +357,23 @@ void Grid3DRenderer::render(const Camera3D& camera, const Rect2D& viewport, cons
         
         if (active_plane_ == PLANE_YZ) {
             float scale = dynamic_grid_size/grid_scale_;
-            if (frame_counter % 60 == 1) {
-                std::cout << "[Grid3D] YZ plane scale=" << scale << ", dynamic_grid_size=" << dynamic_grid_size << std::endl;
-            }
             // YZ plane (for X-axis views) - scale Y and Z, keep X at 1
             vertical_model = Matrix4x4::scale({1.0f, scale, scale});
             vao_to_use = vao_yz_;
         } else if (active_plane_ == PLANE_XY) {
             // Try the EXACT same scaling as YZ plane which works
             float scale = dynamic_grid_size/grid_scale_;
-            if (frame_counter % 60 == 1) {
-                std::cout << "[Grid3D] XY plane scale=" << scale << ", dynamic_grid_size=" << dynamic_grid_size << std::endl;
-                Vector3D cam_pos = camera.get_position();
-                std::cout << "[Grid3D] Camera position: " << cam_pos.x << ", " << cam_pos.y << ", " << cam_pos.z << std::endl;
-                std::cout << "[Grid3D] XY VAO = " << vao_xy_ << " (should be 6)" << std::endl;
-            }
             // XY plane (for Z-axis views) - scale X and Y, keep Z at 1
             // EXACTLY like YZ does it
             vertical_model = Matrix4x4::scale({scale, scale, 1.0f});
             vao_to_use = vao_xy_;
             
-            // Debug: check if VAO is valid
-            if (!glIsVertexArray(vao_xy_)) {
-                std::cout << "[Grid3D] ERROR: XY VAO " << vao_xy_ << " is not valid!" << std::endl;
-            }
         }
         
         // Update uniforms and render
         glUniformMatrix4fv(u_model_, 1, GL_TRUE, vertical_model.data());
         if (u_grid_plane_ != -1) {
             glUniform1i(u_grid_plane_, active_plane_);
-        }
-        
-        if (frame_counter % 60 == 1) {
-            std::cout << "[Grid3D] Using model matrix with scale " << dynamic_grid_size/grid_scale_ << std::endl;
         }
         
         // Render as backdrop - disable depth test entirely
@@ -456,110 +386,10 @@ void Grid3DRenderer::render(const Camera3D& camera, const Rect2D& viewport, cons
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
         
-        // Debug: Check if VAO is valid
-        if (vao_to_use == 0) {
-            std::cout << "[Grid3D] ERROR: VAO is 0!" << std::endl;
-        } else if (frame_counter % 60 == 1) {
-            std::cout << "[Grid3D] Using VAO " << vao_to_use << " for plane " << active_plane_ << std::endl;
-        }
-        
         glBindVertexArray(vao_to_use);
         
-        if (frame_counter % 60 == 1) {
-            std::cout << "[Grid3D] About to draw vertical grid with VAO " << vao_to_use 
-                      << " (XZ=" << vao_xz_ << ", YZ=" << vao_yz_ << ", XY=" << vao_xy_ << ")" << std::endl;
-        }
-        
-        // DEBUG: Check if shader program is valid
-        if (frame_counter % 60 == 1) {
-            GLint is_linked = 0;
-            glGetProgramiv(shader_program_, GL_LINK_STATUS, &is_linked);
-            std::cout << "[Grid3D] Shader program " << shader_program_ 
-                      << " link status: " << is_linked << std::endl;
-                      
-            // Check uniform locations
-            std::cout << "[Grid3D] Uniform locations: model=" << u_model_
-                      << ", view=" << u_view_
-                      << ", proj=" << u_projection_
-                      << ", grid_plane=" << u_grid_plane_ << std::endl;
-                      
-            // Also check the matrices
-            float view_matrix[16];
-            glGetUniformfv(shader_program_, u_view_, view_matrix);
-            std::cout << "[Grid3D] View matrix [0][0]=" << view_matrix[0] 
-                      << ", [1][1]=" << view_matrix[5]
-                      << ", [2][2]=" << view_matrix[10] 
-                      << ", [3][2]=" << view_matrix[14] << " (Z translation)" << std::endl;
-        }
-        
-        // Debug for XY plane specifically
-        if (active_plane_ == PLANE_XY) {
-            std::cout << "[Grid3D] Drawing XY plane with VAO " << vao_to_use << std::endl;
-            
-            // Check if we have a valid VAO bound
-            GLint current_vao = 0;
-            glGetIntegerv(GL_VERTEX_ARRAY_BINDING, &current_vao);
-            std::cout << "[Grid3D] Current VAO bound: " << current_vao << std::endl;
-            
-            // Check the model matrix we're sending
-            std::cout << "[Grid3D] Model matrix for XY plane:" << std::endl;
-            std::cout << "  [" << vertical_model.m[0][0] << ", " << vertical_model.m[0][1] << ", " << vertical_model.m[0][2] << ", " << vertical_model.m[0][3] << "]" << std::endl;
-            std::cout << "  [" << vertical_model.m[1][0] << ", " << vertical_model.m[1][1] << ", " << vertical_model.m[1][2] << ", " << vertical_model.m[1][3] << "]" << std::endl;
-            std::cout << "  [" << vertical_model.m[2][0] << ", " << vertical_model.m[2][1] << ", " << vertical_model.m[2][2] << ", " << vertical_model.m[2][3] << "]" << std::endl;
-            std::cout << "  [" << vertical_model.m[3][0] << ", " << vertical_model.m[3][1] << ", " << vertical_model.m[3][2] << ", " << vertical_model.m[3][3] << "]" << std::endl;
-            
-            // The vertices after transform should be visible
-            float scale = dynamic_grid_size/grid_scale_;
-            std::cout << "[Grid3D] XY vertices after scale " << scale << ":" << std::endl;
-            std::cout << "  Min: (" << (-grid_scale_ * scale) << ", " << (-grid_scale_ * scale) << ", 0)" << std::endl;
-            std::cout << "  Max: (" << (grid_scale_ * scale) << ", " << (grid_scale_ * scale) << ", 0)" << std::endl;
-        }
-        
-        // Extra debug for XY plane
-        if (active_plane_ == PLANE_XY) {
-            // Check if we have vertices
-            GLint vbo_size = 0;
-            glBindBuffer(GL_ARRAY_BUFFER, vbo_xy_);
-            glGetBufferParameteriv(GL_ARRAY_BUFFER, GL_BUFFER_SIZE, &vbo_size);
-            std::cout << "[Grid3D] VBO size for XY: " << vbo_size << " bytes" << std::endl;
-            
-            // Check element buffer
-            GLint ebo_size = 0;
-            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo_);
-            glGetBufferParameteriv(GL_ELEMENT_ARRAY_BUFFER, GL_BUFFER_SIZE, &ebo_size);
-            std::cout << "[Grid3D] EBO size: " << ebo_size << " bytes" << std::endl;
-            
-            // Check if shader uniform is set correctly
-            GLint plane_value = -1;
-            glGetUniformiv(shader_program_, u_grid_plane_, &plane_value);
-            std::cout << "[Grid3D] grid_plane uniform value: " << plane_value << " (should be 2)" << std::endl;
-        }
         
         glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
-        
-        // Check for errors after draw for XY plane
-        if (active_plane_ == PLANE_XY) {
-            GLenum draw_err = glGetError();
-            if (draw_err != GL_NO_ERROR) {
-                std::cout << "[Grid3D] OpenGL Error after XY draw: " << draw_err << std::endl;
-            } else {
-                std::cout << "[Grid3D] XY draw completed without errors" << std::endl;
-            }
-        }
-        
-        // Debug: Check what we actually rendered
-        if (frame_counter % 60 == 1) {
-            GLint viewport[4];
-            glGetIntegerv(GL_VIEWPORT, viewport);
-            std::cout << "[Grid3D] Drew vertical grid. Viewport: " << viewport[0] << "," << viewport[1] 
-                      << "," << viewport[2] << "," << viewport[3] << std::endl;
-        }
-        
-        // Check for OpenGL errors
-        GLenum err = glGetError();
-        if (err != GL_NO_ERROR && frame_counter % 60 == 1) {
-            std::cout << "[Grid3D] OpenGL Error after draw: " << err << std::endl;
-        }
         
         glEnable(GL_DEPTH_TEST);  // Re-enable depth testing
     }
@@ -575,18 +405,7 @@ void Grid3DRenderer::render(const Camera3D& camera, const Rect2D& viewport, cons
     
     glBindVertexArray(vao_xz_);
     
-    // Check for errors before drawing
-    GLenum err = glGetError();
-    if (err != GL_NO_ERROR) {
-        std::cout << "[Grid3D] OpenGL Error before horizontal grid draw: " << err << std::endl;
-    }
-    
     glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
-    
-    err = glGetError();
-    if (err != GL_NO_ERROR) {
-        std::cout << "[Grid3D] OpenGL Error after horizontal grid draw: " << err << std::endl;
-    }
     
     glBindVertexArray(0);
     

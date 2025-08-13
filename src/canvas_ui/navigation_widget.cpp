@@ -695,14 +695,6 @@ int NavigationWidget::hit_test(const Point2D& mouse_pos) const {
     // Widget center is at position + radius
     Point2D widget_center(position_.x + widget_size_, position_.y + widget_size_);
     
-    // Debug output
-    static int debug_counter = 0;
-    if (++debug_counter % 30 == 0) {  // Only print every 30th call to avoid spam
-        std::cout << "[NAV WIDGET] Hit test - mouse: (" << mouse_pos.x << ", " << mouse_pos.y 
-                  << "), widget center: (" << widget_center.x << ", " << widget_center.y 
-                  << "), widget_size: " << widget_size_ 
-                  << " (logical coords)" << std::endl;
-    }
     
     // Check if mouse is within backdrop bounds for hover detection
     float dx = mouse_pos.x - widget_center.x;
@@ -747,8 +739,6 @@ int NavigationWidget::hit_test(const Point2D& mouse_pos) const {
         if (dist < hit_radius && dist < closest_dist) {
             closest_dist = dist;
             closest_sphere = i;
-            std::cout << "[NAV WIDGET] Hit sphere " << i << " at distance " << dist 
-                      << " (hit_radius: " << hit_radius << ")" << std::endl;
         }
     }
     
@@ -756,7 +746,6 @@ int NavigationWidget::hit_test(const Point2D& mouse_pos) const {
 }
 
 void NavigationWidget::handle_click(int axis_id) {
-    std::cout << "[NAV WIDGET] handle_click called with axis_id: " << axis_id << std::endl;
     
     if (axis_id < 0 || axis_id >= NUM_AXES) {
         return;
@@ -764,15 +753,10 @@ void NavigationWidget::handle_click(int axis_id) {
     
     const auto& sphere = axis_spheres_[axis_id];
     
-    std::cout << "[NAV WIDGET] Clicked axis " << sphere.axis 
-              << (sphere.positive ? " (positive)" : " (negative)") << std::endl;
     
     // Call the callback if set
     if (axis_click_callback_) {
-        std::cout << "[NAV WIDGET] Calling axis_click_callback" << std::endl;
         axis_click_callback_(sphere.axis, sphere.positive);
-    } else {
-        std::cout << "[NAV WIDGET] No axis_click_callback set!" << std::endl;
     }
 }
 

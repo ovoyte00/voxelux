@@ -58,14 +58,6 @@ float ViewportNavigator::calculate_depth_factor(const glm::vec3& point) const {
     // For pan, we need the distance from camera to the point
     float distance = glm::length(point - state_.camera_position);
     
-    // Debug output
-    static int depth_debug_counter = 0;
-    if (++depth_debug_counter % 30 == 0) {
-        std::cout << "[DEPTH] Point: (" << point.x << ", " << point.y << ", " << point.z << ")" << std::endl;
-        std::cout << "[DEPTH] Camera pos: (" << state_.camera_position.x << ", " 
-                  << state_.camera_position.y << ", " << state_.camera_position.z << ")" << std::endl;
-        std::cout << "[DEPTH] Distance: " << distance << std::endl;
-    }
     
     // Clamp to avoid near-zero values
     if (distance < 1.0f) {
@@ -133,21 +125,10 @@ void ViewportNavigator::apply_pan(const glm::vec2& delta) {
     // Clear any orbit momentum when panning to prevent interference
     state_.orbit_momentum = glm::vec2(0.0f);
     
-    // Debug: show what we're receiving
-    static int pan_apply_counter = 0;
-    if (++pan_apply_counter % 10 == 0) {
-        std::cout << "[PAN APPLY] Delta received: (" << delta.x << ", " << delta.y << ")" << std::endl;
-    }
     
     // Calculate depth factor at current target (not orbit center)
     float depth = calculate_depth_factor(state_.camera_target);
     
-    // Debug: show depth calculation
-    if (pan_apply_counter % 10 == 0) {
-        std::cout << "[PAN APPLY] Depth factor: " << depth << std::endl;
-        std::cout << "[PAN APPLY] Camera target: (" << state_.camera_target.x << ", " 
-                  << state_.camera_target.y << ", " << state_.camera_target.z << ")" << std::endl;
-    }
     
     // Store old position for comparison
     Vector3D old_position = camera_->get_position();
@@ -177,12 +158,6 @@ void ViewportNavigator::apply_pan(const glm::vec2& delta) {
     // For scrolling: positive delta.y should pan camera up (world moves down)
     Vector3D camera_delta(delta.x * movement_scale, -delta.y * movement_scale, 0);
     
-    // Debug: show camera delta
-    if (pan_apply_counter % 10 == 0) {
-        std::cout << "[PAN APPLY] Camera delta: (" << camera_delta.x << ", " 
-                  << camera_delta.y << ", " << camera_delta.z << ")" << std::endl;
-        std::cout << "[PAN APPLY] Movement scale: " << movement_scale << std::endl;
-    }
     
     // Use Camera3D's built-in pan method which handles orbit mode correctly
     camera_->pan(camera_delta);
@@ -197,14 +172,6 @@ void ViewportNavigator::apply_pan(const glm::vec2& delta) {
     // Keep orbit center in sync when panning
     state_.orbit_center = glm::vec3(new_orbit_target.x, new_orbit_target.y, new_orbit_target.z);
     
-    // Debug: show actual change
-    if (pan_apply_counter % 10 == 0) {
-        std::cout << "[PAN APPLY] Camera moved from: (" << old_position.x << ", " 
-                  << old_position.y << ", " << old_position.z << ")" << std::endl;
-        std::cout << "[PAN APPLY] Camera moved to: (" << new_position.x << ", " 
-                  << new_position.y << ", " << new_position.z << ")" << std::endl;
-        std::cout << "[PAN APPLY] Actual movement: " << (new_position - old_position).length() << std::endl;
-    }
 }
 
 void ViewportNavigator::start_orbit(const glm::vec2& mouse_pos) {
@@ -230,31 +197,16 @@ void ViewportNavigator::update_orbit(const glm::vec2& mouse_pos, float delta_tim
     // reset the reference point without applying rotation
     const float WARP_THRESHOLD = 200.0f;  // Pixels - any jump larger than this is likely a warp
     if (glm::length(delta) > WARP_THRESHOLD) {
-        std::cout << "[ViewportNavigator] Detected cursor warp - resetting reference (delta: " 
-                  << glm::length(delta) << ")" << std::endl;
         state_.last_mouse_pos = mouse_pos;
         return;  // Skip this update
     }
     
-    // Debug first few updates
-    static int update_count = 0;
-    update_count++;
-    if (update_count <= 3) {
-        std::cout << "[ViewportNavigator] update_orbit #" << update_count << std::endl;
-        std::cout << "  Mouse pos: (" << mouse_pos.x << ", " << mouse_pos.y << ")" << std::endl;
-        std::cout << "  Last pos: (" << state_.last_mouse_pos.x << ", " << state_.last_mouse_pos.y << ")" << std::endl;
-        std::cout << "  Raw delta: (" << delta.x << ", " << delta.y << ")" << std::endl;
-        std::cout << "  Sensitivity: " << orbit_sensitivity_mouse_ << ", UI scale: " << ui_scale_ << std::endl;
-    }
     
     state_.last_mouse_pos = mouse_pos;
     
     // Apply sensitivity with UI scale compensation (divide by scale for HiDPI)
     delta *= orbit_sensitivity_mouse_ / ui_scale_;
     
-    if (update_count <= 3) {
-        std::cout << "  Scaled delta: (" << delta.x << ", " << delta.y << ")" << std::endl;
-    }
     
     // Update momentum
     state_.orbit_momentum = state_.orbit_momentum * 0.8f + delta * 0.2f;
@@ -316,19 +268,6 @@ void ViewportNavigator::apply_orbit(const glm::vec2& delta) {
     float horizontal_angle = -delta.x * 0.01f;  // Convert to radians
     float vertical_angle = -delta.y * 0.01f;    // Convert to radians
     
-    // Debug output - ALWAYS show for first few calls
-    static int orbit_call_count = 0;
-    orbit_call_count++;
-    if (orbit_call_count <= 5 || orbit_call_count % 10 == 0) {
-        std::cout << "[ORBIT DEBUG] Call #" << orbit_call_count << std::endl;
-        std::cout << "  Delta: (" << delta.x << ", " << delta.y << ")" << std::endl;
-        std::cout << "  Horizontal angle: " << glm::degrees(horizontal_angle) << " degrees" << std::endl;
-        std::cout << "  Vertical angle: " << glm::degrees(vertical_angle) << " degrees" << std::endl;
-        
-        // Show camera's current angles
-        std::cout << "  Camera h_angle before: " << camera_->get_horizontal_angle() << " rad" << std::endl;
-        std::cout << "  Camera v_angle before: " << camera_->get_vertical_angle() << " rad" << std::endl;
-    }
     
     // Store old state for debugging
     Vector3D old_position = camera_->get_position();
@@ -346,22 +285,6 @@ void ViewportNavigator::apply_orbit(const glm::vec2& delta) {
     state_.camera_target = glm::vec3(new_target.x, new_target.y, new_target.z);
     state_.orbit_center = state_.camera_target; // Keep orbit center at target
     
-    // Debug: show actual change
-    if (orbit_call_count <= 5 || orbit_call_count % 10 == 0) {
-        std::cout << "  Camera moved from: (" << old_position.x << ", " 
-                  << old_position.y << ", " << old_position.z << ")" << std::endl;
-        std::cout << "  Camera moved to: (" << new_position.x << ", " 
-                  << new_position.y << ", " << new_position.z << ")" << std::endl;
-        std::cout << "  Orbit center: (" << state_.orbit_center.x << ", " 
-                  << state_.orbit_center.y << ", " << state_.orbit_center.z << ")" << std::endl;
-        
-        // Calculate the angle from camera to origin in XZ plane
-        glm::vec3 to_camera = state_.camera_position - state_.orbit_center;
-        float angle_rad = std::atan2(to_camera.z, to_camera.x);
-        float angle_deg = glm::degrees(angle_rad);
-        std::cout << "  Camera angle in XZ plane: " << angle_deg << " degrees" << std::endl;
-        std::cout << "  Distance from orbit center: " << glm::length(to_camera) << std::endl;
-    }
 }
 
 void ViewportNavigator::zoom(float delta, const glm::vec2& mouse_pos) {
@@ -410,12 +333,6 @@ void ViewportNavigator::apply_zoom(float delta) {
     state_.pan_momentum = glm::vec2(0.0f);
     state_.orbit_momentum = glm::vec2(0.0f);
     
-    // Debug output
-    static int zoom_debug = 0;
-    if (++zoom_debug % 10 == 0) {
-        std::cout << "[ZOOM DEBUG] Delta: " << delta << std::endl;
-        std::cout << "  Old distance: " << camera_->get_distance() << std::endl;
-    }
     
     // Store old state for debugging
     Vector3D old_position = camera_->get_position();
@@ -445,12 +362,6 @@ void ViewportNavigator::apply_zoom(float delta) {
         state_.is_orthographic = false;
     }
     
-    // Debug: show actual change
-    if (zoom_debug % 10 == 0) {
-        std::cout << "  New distance: " << new_distance << std::endl;
-        std::cout << "  Zoom factor: " << zoom_factor << std::endl;
-        std::cout << "  Position change: " << (new_position - old_position).length() << std::endl;
-    }
 }
 
 
