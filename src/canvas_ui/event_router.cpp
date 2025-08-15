@@ -302,6 +302,7 @@ void EventRouter::log_event(const InputEvent& event, const std::string& handler_
         case EventType::TRACKPAD_ZOOM: type_name = "TRACKPAD_ZOOM"; break;
         case EventType::TRACKPAD_ROTATE: type_name = "TRACKPAD_ROTATE"; break;
         case EventType::SMART_MOUSE_GESTURE: type_name = "SMART_MOUSE_GESTURE"; break;
+        case EventType::MODIFIER_CHANGE: type_name = "MODIFIER_CHANGE"; break;
     }
     
     const char* result_name = "UNKNOWN";

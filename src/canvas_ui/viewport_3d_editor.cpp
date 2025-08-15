@@ -11,6 +11,7 @@
 
 #include "canvas_ui/viewport_3d_editor.h"
 #include "canvas_ui/canvas_renderer.h"
+#include "canvas_ui/scaled_theme.h"
 #include <cmath>
 #include <algorithm>
 #include <iostream>
@@ -106,20 +107,22 @@ void Viewport3DEditor::render_overlay(CanvasRenderer* renderer, const Rect2D& bo
     
     // Render debug info if enabled
     if (show_fps_) {
+        ScaledTheme scaled_theme = renderer->get_scaled_theme();
         std::string fps_text = "FPS: " + std::to_string(frame_count_);
         Point2D fps_pos(bounds.x + 10, bounds.y + 30);
         ColorRGBA text_color = renderer->get_theme().text_primary;
-        renderer->draw_text(fps_text, fps_pos, text_color, 14.0f);
+        renderer->draw_text(fps_text, fps_pos, text_color, scaled_theme.font_size_lg());
     }
     
     // Render camera info
+    ScaledTheme scaled_theme = renderer->get_scaled_theme();
     Vector3D euler = camera_.get_rotation().to_euler();
     std::string camera_info = "Distance: " + std::to_string(camera_.get_distance()) + 
                              " | Rotation: " + std::to_string((int)euler.x) + 
                              "°, " + std::to_string((int)euler.y) + "°";
     Point2D info_pos(bounds.x + 10, bounds.bottom() - 20);
     ColorRGBA info_color = renderer->get_theme().text_secondary;
-    renderer->draw_text(camera_info, info_pos, info_color, 12.0f);
+    renderer->draw_text(camera_info, info_pos, info_color, scaled_theme.font_size_md());
 }
 
 bool Viewport3DEditor::handle_event(const InputEvent& event, const Rect2D& bounds) {
@@ -395,7 +398,7 @@ void Viewport3DEditor::render_3d_scene(CanvasRenderer* renderer, const Rect2D& b
 void Viewport3DEditor::render_grid(CanvasRenderer* renderer, const Rect2D& bounds) {
     if (grid_3d_) {
         // Use proper 3D shader-based grid rendering with theme colors
-        grid_3d_->render(camera_, bounds, renderer->get_theme());
+        grid_3d_->render(camera_, bounds, renderer->get_theme(), renderer->get_content_scale());
     }
 }
 

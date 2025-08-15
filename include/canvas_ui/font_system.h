@@ -16,6 +16,7 @@
 #include <memory>
 #include <vector>
 #include "canvas_ui/canvas_core.h"
+#include "canvas_ui/font_metrics.h"
 
 // Forward declarations
 typedef struct FT_LibraryRec_* FT_Library;
@@ -53,6 +54,12 @@ public:
     float get_ascender(int size) const;
     float get_descender(int size) const;
     
+    // Accurate text measurement with kerning
+    TextMeasurement measure_text(const std::string& text, float font_size_px) const;
+    
+    // Get font metrics object
+    const FontMetrics* get_metrics() const { return metrics_.get(); }
+    
     // Font properties
     const std::string& get_path() const { return font_path_; }
     const std::string& get_name() const { return font_name_; }
@@ -63,6 +70,9 @@ private:
     std::string font_name_;
     FT_Face face_ = nullptr;
     int default_size_;
+    
+    // Font metrics for accurate measurement
+    std::unique_ptr<FontMetrics> metrics_;
     
     // Cache of loaded glyphs per size
     struct SizeCache {
@@ -94,6 +104,10 @@ public:
     
     // Text rendering
     Point2D measure_text(const std::string& text, const std::string& font_name, int size);
+    
+    // Accurate text measurement with kerning
+    TextMeasurement measure_text_accurate(const std::string& text, const std::string& font_name, float font_size_px);
+    
     void render_text(CanvasRenderer* renderer, const std::string& text, 
                     const Point2D& position, const std::string& font_name, 
                     int size, const ColorRGBA& color);
@@ -112,6 +126,9 @@ private:
     FT_Library ft_library_ = nullptr;
     std::unordered_map<std::string, std::unique_ptr<FontFace>> fonts_;
     bool initialized_ = false;
+    
+    // Text measurement cache
+    TextMeasurementCache measurement_cache_;
     
     // Texture atlas for small glyphs (optional optimization)
     struct TextureAtlas {

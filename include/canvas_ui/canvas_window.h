@@ -51,6 +51,13 @@ public:
     Point2D get_framebuffer_size() const;
     float get_content_scale() const;
     
+    // DPI and scaling access
+    float get_dpi() const { return dpi_; }
+    float get_ui_scale() const { return ui_scale_; }
+    float get_pixelsize() const { return pixelsize_; }
+    void set_ui_scale(float scale);
+    void set_ui_line_width(int width);
+    
     // Main render loop
     void render_frame();
     
@@ -84,6 +91,7 @@ public:
 private:
     void setup_opengl_context();
     void setup_callbacks();
+    void calculate_dpi_and_scaling();  // Calculate DPI from framebuffer/window ratio
     InputEvent create_input_event(EventType type) const;
     bool is_smart_mouse_or_trackpad(double x_offset, double y_offset);
     
@@ -95,6 +103,12 @@ private:
     int width_, height_;
     int framebuffer_width_, framebuffer_height_;
     float content_scale_;
+    
+    // DPI and scaling factors (following industry standards)
+    float dpi_;              // Actual DPI (base 72 like Blender)
+    float ui_scale_;         // User UI scale preference (default 1.0)
+    float pixelsize_;        // Combined pixel size factor
+    int ui_line_width_;      // User line width adjustment (default 0)
     
     // UI theme
     CanvasTheme theme_;

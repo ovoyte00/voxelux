@@ -17,6 +17,7 @@ uniform float line_size;
 uniform float grid_scale;
 uniform float grid_subdivision; // Subdivision factor (10 for decimal, 16 for Minecraft, etc.)
 uniform int grid_plane; // 0=XZ (horizontal), 1=YZ (vertical), 2=XY (vertical)
+uniform float ui_scale; // UI/DPI scale factor for high-DPI displays
 
 out vec4 color;
 
@@ -118,8 +119,10 @@ void main() {
     // Using max of X and Z derivatives for consistent grid appearance
     float grid_res = max(abs(dFdxPos.x), abs(dFdxPos.z));
     
-    // Grid appears when it's about 4 pixels wide
-    grid_res *= 4.0;
+    // Grid appears when it's about 4 pixels wide, scaled by UI scale factor
+    // On high-DPI displays, we need more world units per logical pixel
+    float pixel_threshold = 4.0 * ui_scale;
+    grid_res *= pixel_threshold;
     
     // Grid subdivision (default 10, can be 16 for Minecraft)
     float subdiv = grid_subdivision > 0.0 ? grid_subdivision : 10.0;

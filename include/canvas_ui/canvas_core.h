@@ -73,38 +73,113 @@ struct ColorRGBA {
     static ColorRGBA transparent() { return {0, 0, 0, 0}; }
 };
 
-// Professional theme for voxel editing
+// Professional theme for voxel editing (matches voxelux_complete_styles.md)
 struct CanvasTheme {
-    // Base colors (industry-standard professional theme)
-    ColorRGBA background_primary{"#2b2b2b"};   // Main background
-    ColorRGBA background_secondary{"#323232"}; // Headers, panels
-    ColorRGBA accent_selection{"#5680c2"};     // Selection highlight  
-    ColorRGBA text_primary{"#cccccc"};         // Main text
-    ColorRGBA text_secondary{"#999999"};       // Secondary text
-    ColorRGBA grid_subtle{"#3c3c3c"};          // Grid lines
-    ColorRGBA border_normal{"#555555"};        // Panel borders
+    // Base Color Palette - Gray scale foundation
+    ColorRGBA gray_1{"#F2F2F2"};  // Lightest - primary text, active icons
+    ColorRGBA gray_2{"#B4B4B4"};  // Light - secondary text, inactive elements
+    ColorRGBA gray_3{"#575757"};  // Medium - panel backgrounds, active states
+    ColorRGBA gray_4{"#393939"};  // Dark - main application background
+    ColorRGBA gray_5{"#303030"};  // Darkest - borders, headers, footers
+    
+    // Axis Colors (3D Navigation)
+    ColorRGBA axis_x{"#BC4252"};  // Red - X axis
+    ColorRGBA axis_y{"#6CAC34"};  // Green - Y axis
+    ColorRGBA axis_z{"#3B83BE"};  // Blue - Z axis
+    
+    // Semantic Colors
+    ColorRGBA accent_primary{"#3B83BE"};   // Primary actions, selections, playhead
+    ColorRGBA accent_secondary{"#6CAC34"}; // Secondary actions, success states
+    ColorRGBA accent_warning{"#BC4252"};   // Warnings, errors, unsaved indicators
+    
+    // Legacy mappings for compatibility
+    ColorRGBA background_primary = gray_4;     // Main background
+    ColorRGBA background_secondary = gray_5;   // Headers, panels
+    ColorRGBA accent_selection = accent_primary;
+    ColorRGBA text_primary = gray_1;
+    ColorRGBA text_secondary = gray_2;
+    ColorRGBA border_normal = gray_5;
     
     // Grid colors (loaded from assets/styles/colors.json)
     ColorRGBA grid_major_lines{"#5a5a5a"};     // Major grid lines - clearly visible (90, 90, 90)
-    ColorRGBA grid_minor_lines{"#3a3a3a"};     // Minor grid lines - subtle but visible (58, 58, 58)
+    ColorRGBA grid_minor_lines{"#4a4a4a"};     // Minor grid lines - subtle but visible (74, 74, 74)
     ColorRGBA grid_origin{"#FFFFFF"};          // Origin highlight
-    ColorRGBA axis_x_color{"#BC4252"};         // X-axis red
-    ColorRGBA axis_y_color{"#6CAC34"};         // Y-axis green
-    ColorRGBA axis_z_color{"#3B83BE"};         // Z-axis blue
+    ColorRGBA grid_subtle{"#3c3c3c"};          // Grid lines
     
     // Widget states
-    ColorRGBA widget_normal{"#404040"};
-    ColorRGBA widget_hover{"#4a4a4a"};
-    ColorRGBA widget_active{"#5680c2"};
-    ColorRGBA widget_disabled{"#2a2a2a"};
+    ColorRGBA widget_normal = gray_5;
+    ColorRGBA widget_hover = gray_4;
+    ColorRGBA widget_active = accent_primary;
+    ColorRGBA widget_disabled{"#57575733"};  // gray_3 with 0.2 opacity
     
-    // UI dimensions
-    float panel_header_height = 24.0f;
-    float splitter_width = 4.0f;
-    float button_height = 20.0f;
-    float padding_small = 4.0f;
-    float padding_normal = 8.0f;
-    float padding_large = 16.0f;
+    // Layout Dimensions (from style guide)
+    float menu_height = 25.0f;
+    float footer_height = 25.0f;
+    float file_bar_height = 25.0f;
+    float editor_header_height = 25.0f;
+    float dock_header_height = 14.0f;
+    float panel_tab_height = 25.0f;
+    float timeline_ruler_height = 25.0f;
+    float timeline_track_height = 30.0f;
+    
+    // Dock System Dimensions
+    float dock_collapsed_width = 36.0f;
+    float dock_collapsed_max = 225.0f;
+    float dock_expanded_width = 250.0f;
+    float dock_expanded_min = 250.0f;
+    float dock_expanded_max = 500.0f;
+    float tool_dock_expanded = 72.0f;
+    
+    // Component Dimensions
+    float button_height = 22.0f;
+    float button_width = 22.0f;
+    float button_border_radius = 3.0f;
+    float tool_icon_size = 32.0f;
+    float tool_icon_inner = 18.0f;
+    float tab_close_size = 16.0f;
+    float tab_min_width = 120.0f;
+    float tab_max_width = 200.0f;
+    float dropdown_height = 19.0f;
+    float input_height = 19.0f;
+    
+    // Spacing System
+    float spacing_xs = 2.0f;   // Tight spacing
+    float spacing_sm = 4.0f;   // Small spacing
+    float spacing_md = 8.0f;   // Medium spacing
+    float spacing_lg = 10.0f;  // Large spacing
+    float spacing_xl = 20.0f;  // Extra large
+    
+    // Split View System
+    float resize_handle_width = 2.0f;
+    float resize_handle_hit_area = 4.0f;
+    float split_min_size = 100.0f;
+    
+    // Timeline Component
+    float timeline_default_height = 200.0f;
+    float timeline_min_height = 100.0f;
+    float timeline_playhead_width = 2.0f;
+    float keyframe_size = 10.0f;
+    float track_header_width = 120.0f;
+    
+    // Navigation Widget
+    float nav_widget_size = 80.0f;
+    float nav_cube_face_size = 60.0f;
+    
+    // Scrollbars
+    float scrollbar_width = 8.0f;
+    float scrollbar_thumb_radius = 4.0f;
+    
+    // Transitions (in seconds)
+    float transition_fast = 0.15f;
+    float transition_medium = 0.2f;
+    float transition_slow = 0.3f;
+    
+    // Legacy compatibility
+    float panel_header_height = panel_tab_height;
+    float splitter_width = resize_handle_width;
+    float padding_small = spacing_sm;
+    float padding_normal = spacing_md;
+    float padding_large = spacing_lg;
 };
 
 // Input event system

@@ -34,7 +34,7 @@ public:
     void shutdown();
     
     // Render the 3D grid with proper perspective
-    void render(const Camera3D& camera, const Rect2D& viewport, const CanvasTheme& theme);
+    void render(const Camera3D& camera, const Rect2D& viewport, const CanvasTheme& theme, float content_scale = 1.0f);
     
     // Grid appearance settings
     void set_line_width(float width) { line_width_ = width; }
@@ -83,6 +83,7 @@ private:
     GLint u_grid_scale_ = -1;
     GLint u_grid_subdivision_ = -1;
     GLint u_grid_plane_ = -1;  // Which plane we're rendering
+    GLint u_ui_scale_ = -1;  // UI/DPI scale factor
     
     // Grid appearance
     float line_width_ = 1.0f;  // Thin lines (1 pixel wide)

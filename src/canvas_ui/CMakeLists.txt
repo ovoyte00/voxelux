@@ -11,18 +11,31 @@
 add_library(voxelux_canvas_ui
     canvas_core.cpp
     canvas_window.cpp
-    canvas_region.cpp
+    # canvas_region.cpp       # TODO: Needs migration to new widget system
+    canvas_region_stub.cpp   # Temporary stub implementation
     canvas_renderer.cpp
     event_router.cpp
     font_system.cpp
+    font_metrics.cpp
     grid_3d_renderer.cpp
-    ui_widgets.cpp
+    # ui_widgets.cpp      # REMOVED - Replaced by styled_widget.cpp
+    # ui_components.cpp   # REMOVED - Replaced by styled_widget.cpp
     viewport_3d_editor.cpp
     viewport_navigation_handler.cpp
     viewport_navigator.cpp
     navigation_widget.cpp
     camera_3d.cpp
     polyline_shader.cpp
+    voxelux_layout.cpp       # Migrated to new widget system
+    editor_split_view.cpp
+    icon_system.cpp
+    icon_atlas.cpp
+    dock_column.cpp          # Migrated to new widget system
+    dock_container.cpp       # Migrated to new widget system
+    drag_manager.cpp
+    floating_window.cpp      # Migrated to new widget system
+    widget_style.cpp
+    styled_widget.cpp
     ../glad/glad.c  # GLAD OpenGL loader
 )
 

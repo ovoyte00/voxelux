@@ -13,6 +13,7 @@
 #include "canvas_ui/canvas_renderer.h"
 #include "canvas_ui/event_router.h"
 #include "canvas_ui/canvas_region.h"
+#include "canvas_ui/icon_system.h"
 #include "voxelux/platform/native_input.h"
 
 #define GLFW_INCLUDE_NONE
@@ -84,6 +85,14 @@ static void glfw_key_callback(GLFWwindow* window, int key, int scancode, int act
     }
 }
 
+static void glfw_window_content_scale_callback(GLFWwindow* window, float xscale, float yscale) {
+    CanvasWindow* canvas_window = static_cast<CanvasWindow*>(glfwGetWindowUserPointer(window));
+    if (canvas_window) {
+        std::cout << "Window content scale changed to: " << xscale << "x" << yscale << std::endl;
+        // The framebuffer resize callback will handle the actual DPI recalculation
+    }
+}
+
 // CanvasWindow implementation
 
 CanvasWindow::CanvasWindow(int width, int height, const std::string& title)
@@ -94,6 +103,10 @@ CanvasWindow::CanvasWindow(int width, int height, const std::string& title)
     , framebuffer_width_(width)
     , framebuffer_height_(height)
     , content_scale_(1.0f)
+    , dpi_(72.0f)  // Base DPI following Blender/macOS convention
+    , ui_scale_(1.0f)
+    , pixelsize_(1.0f)
+    , ui_line_width_(0)
     , last_mouse_pos_(0, 0)
     , keyboard_modifiers_(0) {
 }
@@ -169,6 +182,12 @@ bool CanvasWindow::initialize() {
     // Set default theme
     theme_ = CanvasTheme(); // Uses default professional dark theme colors
     renderer_->set_theme(theme_);
+
+    // Initialize icon system
+    IconSystem& icon_system = IconSystem::get_instance();
+    if (!icon_system.initialize("assets/icons/")) {
+        std::cerr << "Warning: Failed to initialize icon system" << std::endl;
+    }
 
     // Initialize native input helper for better scroll detection
     if (voxelux::platform::NativeInput::is_available()) {
@@ -315,11 +334,24 @@ float CanvasWindow::get_content_scale() const {
     return content_scale_;
 }
 
+void CanvasWindow::set_ui_scale(float scale) {
+    ui_scale_ = std::max(0.25f, std::min(4.0f, scale));  // Clamp to reasonable range
+    calculate_dpi_and_scaling();
+}
+
+void CanvasWindow::set_ui_line_width(int width) {
+    ui_line_width_ = std::max(-2, std::min(2, width));  // Clamp to -2 to 2
+    calculate_dpi_and_scaling();
+}
+
 void CanvasWindow::render_frame() {
     if (!initialized_ || !renderer_) {
         return;
     }
 
+    // NOTE: This default rendering is now handled by VoxeluxLayout in the main app
+    // Keeping this for backward compatibility with other uses of CanvasWindow
+    
     // Begin frame
     renderer_->begin_frame();
     
@@ -399,7 +431,10 @@ void CanvasWindow::setup_opengl_context() {
     
     float x_scale, y_scale;
     glfwGetWindowContentScale(window_, &x_scale, &y_scale);
-    content_scale_ = x_scale; // Use x_scale as representative
+    content_scale_ = x_scale; // Store initial scale
+    
+    // Calculate proper DPI and scaling factors
+    calculate_dpi_and_scaling();
     
     gl_context_initialized_ = true;
 }
@@ -415,13 +450,14 @@ void CanvasWindow::setup_callbacks() {
     glfwSetCursorPosCallback(window_, glfw_cursor_pos_callback);
     glfwSetScrollCallback(window_, glfw_scroll_callback);
     glfwSetKeyCallback(window_, glfw_key_callback);
+    glfwSetWindowContentScaleCallback(window_, glfw_window_content_scale_callback);
 }
 
 InputEvent CanvasWindow::create_input_event(EventType type) const {
     InputEvent event;
     event.type = type;
     event.timestamp = glfwGetTime();
-    event.mouse_pos = last_mouse_pos_;
+    event.mouse_pos = last_mouse_pos_;  // Already in framebuffer space
     event.mouse_delta = Point2D(0, 0);
     event.mouse_button = MouseButton::LEFT;
     event.key_code = 0;
@@ -436,14 +472,66 @@ void CanvasWindow::on_window_resize(int width, int height) {
     width_ = width;
     height_ = height;
     
+    // Recalculate DPI and scaling when window changes
+    calculate_dpi_and_scaling();
+    
     if (renderer_) {
         renderer_->set_viewport(0, 0, framebuffer_width_, framebuffer_height_);
+    }
+}
+
+void CanvasWindow::calculate_dpi_and_scaling() {
+    // Store previous pixelsize to detect changes
+    float previous_pixelsize = pixelsize_;
+    
+    // Calculate actual scale from framebuffer vs window dimensions
+    // This handles the case where framebuffer isn't exactly 2x window size
+    float scale_x = static_cast<float>(framebuffer_width_) / static_cast<float>(width_);
+    float scale_y = static_cast<float>(framebuffer_height_) / static_cast<float>(height_);
+    
+    // Use average scale (they should be similar but might differ slightly)
+    float actual_scale = (scale_x + scale_y) / 2.0f;
+    
+    // Following Blender's approach:
+    // Base DPI is 72 (macOS/Blender convention)
+    // GLFW/system assumes 96 DPI, so we convert
+    const float base_dpi = 72.0f;
+    const float system_dpi = 96.0f;
+    
+    // Calculate actual DPI from the native pixel scale
+    // On macOS with retina, actual_scale will be ~2.0
+    dpi_ = base_dpi * actual_scale * ui_scale_;
+    
+    // Calculate pixelsize (following Blender's formula)
+    // pixelsize = max(1, DPI/64 + ui_line_width)
+    pixelsize_ = std::max(1.0f, (dpi_ / 64.0f) + static_cast<float>(ui_line_width_));
+    
+    // Store the calculated content scale for compatibility
+    content_scale_ = actual_scale;
+    
+    std::cout << "DPI Calculation: window=" << width_ << "x" << height_ 
+              << ", framebuffer=" << framebuffer_width_ << "x" << framebuffer_height_
+              << ", actual_scale=" << actual_scale
+              << ", dpi=" << dpi_
+              << ", pixelsize=" << pixelsize_ << std::endl;
+    
+    // If DPI changed significantly, clear icon cache
+    if (initialized_ && std::abs(pixelsize_ - previous_pixelsize) > 0.01f) {
+        std::cout << "DPI changed from " << previous_pixelsize << " to " << pixelsize_ 
+                  << ", clearing icon cache" << std::endl;
+        
+        // Clear all cached icon sizes to force re-rendering at new DPI
+        IconSystem& icon_system = IconSystem::get_instance();
+        icon_system.clear_all_caches();
     }
 }
 
 void CanvasWindow::on_framebuffer_resize(int width, int height) {
     framebuffer_width_ = width;
     framebuffer_height_ = height;
+    
+    // Recalculate DPI and scaling when framebuffer changes
+    calculate_dpi_and_scaling();
     
     if (renderer_) {
         renderer_->set_viewport(0, 0, width, height);
@@ -482,7 +570,10 @@ void CanvasWindow::on_mouse_button(int button, int action, int mods) {
 }
 
 void CanvasWindow::on_mouse_move(double x, double y) {
-    last_mouse_pos_ = Point2D(static_cast<float>(x), static_cast<float>(y));
+    // Convert mouse coordinates from window space to framebuffer space
+    float scale = get_content_scale();
+    last_mouse_pos_ = Point2D(static_cast<float>(x) * scale, static_cast<float>(y) * scale);
+    
     
     InputEvent event = create_input_event(EventType::MOUSE_MOVE);
     

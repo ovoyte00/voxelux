@@ -11,6 +11,7 @@
 
 #include "canvas_ui/font_system.h"
 #include "canvas_ui/canvas_renderer.h"
+#include "canvas_ui/font_metrics.h"
 #include "glad/gl.h"
 
 #include <ft2build.h>
@@ -65,10 +66,17 @@ bool FontFace::load() {
     // Set default size
     FT_Set_Pixel_Sizes(face_, 0, default_size_);
     
+    // Initialize font metrics for accurate measurement
+    metrics_ = std::make_unique<FontMetrics>();
+    metrics_->initialize(face_);
+    
     return true;
 }
 
 void FontFace::unload() {
+    // Clear font metrics first
+    metrics_.reset();
+    
     if (face_) {
         FT_Done_Face(face_);
         face_ = nullptr;
@@ -211,6 +219,21 @@ float FontFace::get_descender(int size) const {
     }
     
     return size * 0.2f; // Fallback
+}
+
+TextMeasurement FontFace::measure_text(const std::string& text, float font_size_px) const {
+    if (!metrics_) {
+        // Fallback to simple measurement without kerning
+        TextMeasurement result;
+        result.width = text.length() * font_size_px * 0.6f;  // Approximation
+        result.height = font_size_px * 1.2f;
+        result.ascender = font_size_px * 0.8f;
+        result.descender = -font_size_px * 0.2f;
+        result.line_gap = font_size_px * 0.2f;
+        return result;
+    }
+    
+    return metrics_->measure_text(text, font_size_px);
 }
 
 // FontSystem implementation
@@ -363,25 +386,28 @@ static unsigned int decode_utf8(const std::string& text, size_t& index) {
 }
 
 Point2D FontSystem::measure_text(const std::string& text, const std::string& font_name, int size) {
+    // Use accurate measurement if available
+    TextMeasurement measurement = measure_text_accurate(text, font_name, static_cast<float>(size));
+    return Point2D(measurement.width, measurement.height);
+}
+
+TextMeasurement FontSystem::measure_text_accurate(const std::string& text, const std::string& font_name, float font_size_px) {
     FontFace* font = get_font(font_name);
     if (!font) {
-        return Point2D(0, 0);
+        TextMeasurement empty;
+        empty.width = 0;
+        empty.height = 0;
+        empty.ascender = 0;
+        empty.descender = 0;
+        empty.line_gap = 0;
+        return empty;
     }
     
-    float width = 0;
-    float height = font->get_line_height(size);
-    
-    // Iterate through UTF-8 text
-    for (size_t i = 0; i < text.length(); ) {
-        unsigned int codepoint = decode_utf8(text, i);
-        
-        GlyphInfo* glyph = font->get_glyph(codepoint, size);
-        if (glyph) {
-            width += glyph->advance;
-        }
-    }
-    
-    return Point2D(width, height);
+    // Use cache for performance
+    TextMeasurementCache::CacheKey key{text, font_name, font_size_px};
+    return measurement_cache_.measure(key, [&]() {
+        return font->measure_text(text, font_size_px);
+    });
 }
 
 void FontSystem::render_text(CanvasRenderer* renderer, const std::string& text, 

@@ -11,7 +11,9 @@
 
 #include "canvas_ui/canvas_region.h"
 #include "canvas_ui/canvas_renderer.h"
-#include "canvas_ui/ui_widgets.h"
+#include "canvas_ui/scaled_theme.h"
+// #include "canvas_ui/ui_widgets.h"  // REMOVED - Using styled_widgets.h
+#include "canvas_ui/styled_widgets.h"
 #include "canvas_ui/viewport_3d_editor.h"
 #include <algorithm>
 #include <iostream>
@@ -228,9 +230,10 @@ void CanvasRegion::render_header(CanvasRenderer* renderer) {
     // Render editor type text (temporary until dropdown is working)
     const float scale_factor = 2.0f;
     if (editor_) {
+        ScaledTheme scaled_theme = renderer->get_scaled_theme();
         Point2D editor_text_pos(header_rect.x + 10 * scale_factor, header_rect.y + 12 * scale_factor);
         std::string editor_name = EditorFactory::get_editor_name(editor_->get_type());
-        renderer->draw_text(editor_name, editor_text_pos, ColorRGBA("#ffffff"), 14.0f * scale_factor);
+        renderer->draw_text(editor_name, editor_text_pos, ColorRGBA("#ffffff"), scaled_theme.font_size_lg());
     }
 }
 
@@ -248,8 +251,9 @@ void CanvasRegion::render_content(CanvasRenderer* renderer) {
         editor_->render_overlay(renderer, content_rect);
     } else {
         // Render placeholder
+        ScaledTheme scaled_theme = renderer->get_scaled_theme();
         Point2D center(content_rect.x + content_rect.width * 0.5f, content_rect.y + content_rect.height * 0.5f);
-        renderer->draw_text("No Editor", center, renderer->get_theme().text_secondary, 14.0f);
+        renderer->draw_text("No Editor", center, renderer->get_theme().text_secondary, scaled_theme.font_size_lg());
     }
 }
 
@@ -496,12 +500,13 @@ std::unique_ptr<EditorSpace> EditorFactory::create_editor(EditorType type) {
                     renderer->draw_rect(bounds, bright_bg);
                     renderer->draw_rect_outline(bounds, ColorRGBA("#ffffff"), 2.0f);
                     
+                    ScaledTheme scaled_theme = renderer->get_scaled_theme();
                     Point2D title_pos(bounds.x + 20, bounds.y + 50);
                     std::string title = get_name() + " Editor";
-                    renderer->draw_text(title, title_pos, ColorRGBA("#ffffff"), 24.0f);
+                    renderer->draw_text(title, title_pos, ColorRGBA("#ffffff"), scaled_theme.font_size_huge());
                     
                     Point2D help_pos(bounds.x + 20, bounds.y + 100);
-                    renderer->draw_text("Not yet implemented", help_pos, ColorRGBA("#cccccc"), 16.0f);
+                    renderer->draw_text("Not yet implemented", help_pos, ColorRGBA("#cccccc"), scaled_theme.font_size_xl());
                 }
             };
             

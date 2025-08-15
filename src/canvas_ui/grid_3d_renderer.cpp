@@ -175,6 +175,7 @@ bool Grid3DRenderer::load_shaders() {
     u_grid_scale_ = glGetUniformLocation(shader_program_, "grid_scale");
     u_grid_subdivision_ = glGetUniformLocation(shader_program_, "grid_subdivision");
     u_grid_plane_ = glGetUniformLocation(shader_program_, "grid_plane");
+    u_ui_scale_ = glGetUniformLocation(shader_program_, "ui_scale");
     
     return true;
 }
@@ -271,7 +272,7 @@ bool Grid3DRenderer::create_grid_geometries() {
     return true;
 }
 
-void Grid3DRenderer::render(const Camera3D& camera, const Rect2D& viewport, const CanvasTheme& theme) {
+void Grid3DRenderer::render(const Camera3D& camera, const Rect2D& viewport, const CanvasTheme& theme, float content_scale) {
     if (!initialized_) {
         return;
     }
@@ -333,10 +334,10 @@ void Grid3DRenderer::render(const Camera3D& camera, const Rect2D& viewport, cons
         glUniform4f(u_grid_major_color_, theme.grid_major_lines.r, theme.grid_major_lines.g, theme.grid_major_lines.b, theme.grid_major_lines.a);
     }
     if (u_grid_axis_x_color_ != -1) {
-        glUniform4f(u_grid_axis_x_color_, theme.axis_x_color.r, theme.axis_x_color.g, theme.axis_x_color.b, 1.0f);
+        glUniform4f(u_grid_axis_x_color_, theme.axis_x.r, theme.axis_x.g, theme.axis_x.b, 1.0f);
     }
     if (u_grid_axis_z_color_ != -1) {
-        glUniform4f(u_grid_axis_z_color_, theme.axis_z_color.r, theme.axis_z_color.g, theme.axis_z_color.b, 1.0f);
+        glUniform4f(u_grid_axis_z_color_, theme.axis_z.r, theme.axis_z.g, theme.axis_z.b, 1.0f);
     }
     if (u_line_size_ != -1) {
         glUniform1f(u_line_size_, line_width_);
@@ -346,6 +347,9 @@ void Grid3DRenderer::render(const Camera3D& camera, const Rect2D& viewport, cons
     }
     if (u_grid_subdivision_ != -1) {
         glUniform1f(u_grid_subdivision_, grid_subdivision_);
+    }
+    if (u_ui_scale_ != -1) {
+        glUniform1f(u_ui_scale_, content_scale);
     }
     
     // Render vertical grid FIRST if enabled (so horizontal grid doesn't cover it)
