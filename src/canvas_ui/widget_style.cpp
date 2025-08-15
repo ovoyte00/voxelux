@@ -212,86 +212,86 @@ WidgetStyle& WidgetStyle::operator=(const WidgetStyle& other) {
 }
 
 void WidgetStyle::merge(const WidgetStyle& other) {
-    // Only override if the other style has explicitly set values
-    // This is a simplified merge - in production you'd track which properties are set
+    // IMPORTANT: For hover/focus/active states, we should ONLY merge properties that
+    // are different from the default WidgetStyle constructor values.
+    // This ensures we only apply intentionally set properties.
     
-    if (other.display != Display::Block) display = other.display;
-    if (other.position != Position::Static) position = other.position;
+    // Create a default style to compare against
+    static const WidgetStyle default_style;
     
-    // Only override if values are non-default
-    // Check if padding is non-zero
-    if (other.padding.top.value != 0 || other.padding.right.value != 0 ||
-        other.padding.bottom.value != 0 || other.padding.left.value != 0) {
-        padding = other.padding;
-    }
-    if (other.margin.top.value != 0 || other.margin.right.value != 0 ||
-        other.margin.bottom.value != 0 || other.margin.left.value != 0) {
-        margin = other.margin;
-    }
-    if (other.border.width.value != 0) {
-        border = other.border;
-    }
-    if (other.width.unit != SizeValue::Auto) width = other.width;
-    if (other.height.unit != SizeValue::Auto) height = other.height;
-    if (other.min_width.unit != SizeValue::Auto) min_width = other.min_width;
-    if (other.max_width.unit != SizeValue::Auto) max_width = other.max_width;
-    if (other.min_height.unit != SizeValue::Auto) min_height = other.min_height;
-    if (other.max_height.unit != SizeValue::Auto) max_height = other.max_height;
+    // Only merge properties that differ from defaults
+    if (other.display != default_style.display) display = other.display;
+    if (other.position != default_style.position) position = other.position;
     
-    flex_direction = other.flex_direction;
-    align_items = other.align_items;
-    justify_content = other.justify_content;
-    flex_wrap = other.flex_wrap;
-    gap = other.gap;
-    flex_grow = other.flex_grow;
-    flex_shrink = other.flex_shrink;
-    flex_basis = other.flex_basis;
+    // Check each spacing value individually against defaults
+    if (other.padding.top != default_style.padding.top) padding.top = other.padding.top;
+    if (other.padding.right != default_style.padding.right) padding.right = other.padding.right;
+    if (other.padding.bottom != default_style.padding.bottom) padding.bottom = other.padding.bottom;
+    if (other.padding.left != default_style.padding.left) padding.left = other.padding.left;
     
-    // Only override colors if they've been explicitly set
-    // Check if it's not using the default theme color
-    if (other.background.type == ColorValue::Direct || 
-        (other.background.type == ColorValue::ThemeColor && other.background.theme_ref != "gray_3")) {
+    if (other.margin.top != default_style.margin.top) margin.top = other.margin.top;
+    if (other.margin.right != default_style.margin.right) margin.right = other.margin.right;
+    if (other.margin.bottom != default_style.margin.bottom) margin.bottom = other.margin.bottom;
+    if (other.margin.left != default_style.margin.left) margin.left = other.margin.left;
+    
+    // Border properties
+    if (other.border.width != default_style.border.width) border.width = other.border.width;
+    if (other.border.color != default_style.border.color) border.color = other.border.color;
+    if (other.border.radius != default_style.border.radius) border.radius = other.border.radius;
+    
+    // Size properties
+    if (other.width != default_style.width) width = other.width;
+    if (other.height != default_style.height) height = other.height;
+    if (other.min_width != default_style.min_width) min_width = other.min_width;
+    if (other.max_width != default_style.max_width) max_width = other.max_width;
+    if (other.min_height != default_style.min_height) min_height = other.min_height;
+    if (other.max_height != default_style.max_height) max_height = other.max_height;
+    
+    // Flex properties
+    if (other.flex_direction != default_style.flex_direction) flex_direction = other.flex_direction;
+    if (other.align_items != default_style.align_items) align_items = other.align_items;
+    if (other.justify_content != default_style.justify_content) justify_content = other.justify_content;
+    if (other.flex_wrap != default_style.flex_wrap) flex_wrap = other.flex_wrap;
+    if (other.gap != default_style.gap) gap = other.gap;
+    if (other.flex_grow != default_style.flex_grow) flex_grow = other.flex_grow;
+    if (other.flex_shrink != default_style.flex_shrink) flex_shrink = other.flex_shrink;
+    if (other.flex_basis != default_style.flex_basis) flex_basis = other.flex_basis;
+    
+    // Colors - only merge if different from default
+    if (other.background != default_style.background) {
         background = other.background;
     }
-    if (other.text_color.type == ColorValue::Direct || 
-        (other.text_color.type == ColorValue::ThemeColor && other.text_color.theme_ref != "gray_3")) {
+    if (other.text_color != default_style.text_color) {
         text_color = other.text_color;
     }
-    if (other.opacity != 1.0f) {
+    if (other.opacity != default_style.opacity) {
         opacity = other.opacity;
     }
     
-    if (!other.font_family.empty()) font_family = other.font_family;
-    // Only override font_size if it's been explicitly set (non-zero)
-    if (other.font_size.value != 0) {
-        font_size = other.font_size;
-    }
-    // Only override font_weight if it's non-default (400 is normal)
-    if (other.font_weight != 0) {
-        font_weight = other.font_weight;
-    }
-    if (other.text_align != TextAlign::Left) text_align = other.text_align;
-    vertical_align = other.vertical_align;
-    line_height = other.line_height;
-    letter_spacing = other.letter_spacing;
+    // Font properties
+    if (other.font_family != default_style.font_family) font_family = other.font_family;
+    if (other.font_size != default_style.font_size) font_size = other.font_size;
+    if (other.font_weight != default_style.font_weight) font_weight = other.font_weight;
+    if (other.text_align != default_style.text_align) text_align = other.text_align;
+    if (other.vertical_align != default_style.vertical_align) vertical_align = other.vertical_align;
+    if (other.line_height != default_style.line_height) line_height = other.line_height;
+    if (other.letter_spacing != default_style.letter_spacing) letter_spacing = other.letter_spacing;
     
-    // Check if box_shadow has been set (non-zero blur or offset)
-    if (other.box_shadow.blur_radius != 0 || other.box_shadow.offset_x != 0 || 
-        other.box_shadow.offset_y != 0) {
-        box_shadow = other.box_shadow;
-    }
-    if (other.box_shadows) box_shadows = other.box_shadows;
+    // Shadow
+    if (other.box_shadow != default_style.box_shadow) box_shadow = other.box_shadow;
+    if (other.box_shadows != default_style.box_shadows) box_shadows = other.box_shadows;
     
-    overflow_x = other.overflow_x;
-    overflow_y = other.overflow_y;
+    // Overflow
+    if (other.overflow_x != default_style.overflow_x) overflow_x = other.overflow_x;
+    if (other.overflow_y != default_style.overflow_y) overflow_y = other.overflow_y;
     
-    if (other.top) top = other.top;
-    if (other.right) right = other.right;
-    if (other.bottom) bottom = other.bottom;
-    if (other.left) left = other.left;
-    if (other.z_index) z_index = other.z_index;
-    
-    if (!other.cursor.empty()) cursor = other.cursor;
+    // Positioning
+    if (other.top != default_style.top) top = other.top;
+    if (other.right != default_style.right) right = other.right;
+    if (other.bottom != default_style.bottom) bottom = other.bottom;
+    if (other.left != default_style.left) left = other.left;
+    if (other.z_index != default_style.z_index) z_index = other.z_index;
+    if (other.cursor != default_style.cursor) cursor = other.cursor;
     
     // Merge state variants
     if (other.hover_style) {

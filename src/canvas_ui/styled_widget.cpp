@@ -8,6 +8,7 @@
 #include "canvas_ui/canvas_renderer.h"
 #include "canvas_ui/scaled_theme.h"
 #include "canvas_ui/font_system.h"
+#include "canvas_ui/render_block.h"
 #include <algorithm>
 #include <numeric>
 #include <iostream>
@@ -25,6 +26,30 @@ void StyledWidget::set_style(const WidgetStyle& style) {
     base_style_ = style;
     invalidate_style();
     invalidate_layout();
+}
+
+void StyledWidget::invalidate_layout() {
+    needs_layout_ = true;
+    
+    // Check if we're in a render block's build phase
+    RenderBlock* current = RenderBlock::get_current();
+    if (!current || !current->is_building()) {
+        // Not in batch mode, mark dirty immediately
+        mark_dirty();
+    }
+    // Otherwise, defer the dirty marking until block resolution
+}
+
+void StyledWidget::invalidate_style() {
+    needs_style_computation_ = true;
+    
+    // Check if we're in a render block's build phase
+    RenderBlock* current = RenderBlock::get_current();
+    if (!current || !current->is_building()) {
+        // Not in batch mode, mark dirty immediately
+        mark_dirty();
+    }
+    // Otherwise, defer the dirty marking until block resolution
 }
 
 void StyledWidget::set_style_json(const std::string& json) {
@@ -287,16 +312,6 @@ void StyledWidget::render(CanvasRenderer* renderer) {
 void StyledWidget::render_background(CanvasRenderer* renderer) {
     Rect2D bg_bounds = get_padding_bounds();
     
-    // Debug for button background colors
-    if (get_widget_type() == "button" && is_hovered()) {
-        std::cout << "BUTTON RENDER: " << id_ << " bg_color=(" 
-                  << computed_style_.background_color.r << "," 
-                  << computed_style_.background_color.g << "," 
-                  << computed_style_.background_color.b << "," 
-                  << computed_style_.background_color.a << ") bounds=("
-                  << bg_bounds.x << "," << bg_bounds.y << "," 
-                  << bg_bounds.width << "," << bg_bounds.height << ")" << std::endl;
-    }
     
     // Render background layers in order (first layer is bottom-most)
     // 1. Background color (always bottom)

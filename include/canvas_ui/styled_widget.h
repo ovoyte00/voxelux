@@ -18,12 +18,15 @@ namespace voxel_canvas {
 // Forward declarations
 class CanvasRenderer;
 class InputEvent;
+class RenderBlock;
 
 /**
  * Base class for all styled UI widgets
  * Any widget can be a container with layout properties
  */
 class StyledWidget : public std::enable_shared_from_this<StyledWidget> {
+    friend class RenderBlock;  // Allow RenderBlock to manage rendering efficiently
+    
 public:
     // Widget state flags
     enum class WidgetState {
@@ -127,14 +130,15 @@ protected:
     
     // Layout management
     void perform_layout();  // Recursively layout this widget and children
-    void invalidate_layout() { needs_layout_ = true; mark_dirty(); }
+    void invalidate_layout();  // Mark as needing layout (respects batch mode)
     bool needs_layout() const { return needs_layout_; }
+    bool needs_style_computation() const { return needs_style_computation_; }
     void request_layout();  // Request layout to be performed (will be done automatically before render)
     
     // Style computation
     void compute_style(const ScaledTheme& theme);
     const WidgetStyle::ComputedStyle& get_computed_style() const { return computed_style_; }
-    void invalidate_style() { needs_style_computation_ = true; mark_dirty(); }
+    void invalidate_style();  // Mark as needing style update (respects batch mode)
     
     // Mark this widget's area as needing redraw
     void mark_dirty();

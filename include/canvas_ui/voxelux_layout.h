@@ -10,6 +10,7 @@
 
 #include "canvas_core.h"
 #include "styled_widgets.h"
+#include "render_block.h"
 #include "dock_container.h"
 #include "dock_column.h"
 #include "viewport_3d_editor.h"
@@ -36,7 +37,9 @@ public:
         base_style_.flex_direction = WidgetStyle::FlexDirection::Column;
         base_style_.width = SizeValue::percent(100);
         base_style_.height = SizeValue::percent(100);
-        base_style_.background = ColorValue("gray_5");
+        base_style_.background = ColorValue("gray_3");  // Match viewport background
+        base_style_.padding = BoxSpacing(0);  // No padding - menu bar should be flush with window edge
+        base_style_.margin = BoxSpacing(0);   // No margin
     }
     
     ~VoxeluxLayout() = default;
@@ -200,8 +203,8 @@ private:
         menu_bar_->add_menu("Window", window_menu);
         menu_bar_->add_menu("Help", {});
         
-        // Finalize all menu additions at once
-        menu_bar_->finalize_menus();
+        // Build all menu items now that we've added them all
+        menu_bar_->build_menus();
         
         add_child(menu_bar_);
         
@@ -343,6 +346,8 @@ private:
         create_status_bar();
         
         // Force initial layout calculation
+        // Note: We're not using RenderBlock here since we need the renderer's theme
+        // The batching will happen during the first render when we have access to the theme
         invalidate_layout();
     }
     

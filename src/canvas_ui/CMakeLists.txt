@@ -36,6 +36,7 @@ add_library(voxelux_canvas_ui
     floating_window.cpp      # Migrated to new widget system
     widget_style.cpp
     styled_widget.cpp
+    render_block.cpp
     ../glad/glad.c  # GLAD OpenGL loader
 )
 

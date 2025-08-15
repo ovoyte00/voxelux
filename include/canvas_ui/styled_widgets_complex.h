@@ -359,11 +359,15 @@ public:
         base_style_.align_items = WidgetStyle::AlignItems::Center;
         base_style_.width = SizeValue::percent(100);  // 100vw (100% width)
         base_style_.height = SizeValue(25);           // 25px tall
-        base_style_.background = ColorValue("gray_5");  // Keep for now
+        base_style_.background = ColorValue("gray_5");
         base_style_.padding = BoxSpacing(0, 12);      // No vertical padding, horizontal padding for logo
+        base_style_.margin = BoxSpacing(0);           // No margin
         base_style_.gap = SpacingValue(0);            // NO gap between menu items
-        
-        // Layout will be automatically deferred until render
+        base_style_.border = BorderStyle{             // No borders
+            .width = SpacingValue(0),
+            .color = ColorValue("transparent"),
+            .radius = SpacingValue(0)
+        };
     }
     
     void set_logo(const std::string& logo_text) {
@@ -376,37 +380,31 @@ public:
         invalidate_layout();
     }
     
-    // Deprecated - no longer needed with automatic deferred layout
-    void finalize_menus() {
-        // Kept for compatibility but does nothing now
+    void build_menus() {
+        // Build all menu items in one batch
+        rebuild_menu_items();
     }
     
     std::string get_widget_type() const override { return "menubar"; }
     
 protected:
     void render_content(CanvasRenderer* renderer) override {
-        // Build children on first render if needed
-        if (!menus_built_) {
-            rebuild_menu_items();
-            menus_built_ = true;
-        }
-        
         // Normal rendering
         Container::render_content(renderer);
     }
     
 private:
     void rebuild_menu_items() {
-        // Only build once
-        if (menus_built_) return;
+        // Clear existing children
+        remove_all_children();
         
         // Voxelux logo icon - always show  
-        // Try different icon loading approaches
-        auto logo_icon = create_widget<Icon>("voxelux", 20);
+        // Icon is loaded from assets/icons/ui/voxelux.svg as "ui_voxelux"
+        auto logo_icon = create_widget<Icon>("ui_voxelux", 16);  // 16px icon
         logo_icon->get_style()
             .set_text_color(ColorValue("white"))    // Make it more visible
-            .set_width(SizeValue(20))     // Fixed width - larger
-            .set_height(SizeValue(20))    // Fixed height - larger
+            .set_width(SizeValue(16))     // Fixed width - 16px
+            .set_height(SizeValue(16))    // Fixed height - 16px
             .set_margin(BoxSpacing(0, 8, 0, 0))  // Add 8px right margin for spacing
             .set_flex_shrink(0);          // Don't shrink the logo
         
@@ -420,35 +418,29 @@ private:
         for (const auto& [label, items] : menus_) {
             auto menu_button = create_widget<Button>(label);
             
-            // Auto-width buttons with horizontal padding only
-            menu_button->get_style()
-                .set_background(ColorValue("gray_5"))  // Same as MenuBar for testing
-                .set_padding(BoxSpacing(0, 10))      // No vertical padding, 10px horizontal
-                .set_margin(BoxSpacing(0))           // No margin - buttons touch each other
-                .set_width(SizeValue::auto_size())   // Auto width based on content
-                .set_font_size(SpacingValue(13))     // Fixed font size
-                .set_font_weight(400)                // Normal weight
-                .set_height(SizeValue(25))           // Match menu bar height
-                .set_text_color(ColorValue("gray_1"))
-                .set_flex_shrink(0)                  // Don't shrink
-                .set_cursor("pointer");
+            // Apply menu-specific styling - clear defaults first
+            auto& style = menu_button->get_style();
+            style.set_background(ColorValue("transparent"));  // Transparent background
+            style.set_padding(BoxSpacing(0, 10));             // No vertical padding, 10px horizontal
+            style.set_margin(BoxSpacing(0));                  // No margin
+            style.set_width(SizeValue::auto_size());          // Auto width
+            style.set_font_size(SpacingValue(13));            // Fixed font size
+            style.set_font_weight(400);                       // Normal weight
+            style.set_height(SizeValue(25));                  // 25px height
+            style.set_text_color(ColorValue("gray_1"));
+            style.set_flex_shrink(0);                         // Don't shrink
+            style.set_cursor("pointer");
             
-            // Explicitly remove border
-            menu_button->get_style().border.width = SpacingValue(0);
-            menu_button->get_style().border.color = ColorValue("transparent");
-            menu_button->get_style().border.radius = SpacingValue(0);
+            // Explicitly set border to none
+            BorderStyle no_border;
+            no_border.width = SpacingValue(0);
+            no_border.color = ColorValue("transparent");
+            no_border.radius = SpacingValue(0);
+            style.set_border(no_border);
             
-            // Hover style - preserve all properties and remove borders
+            // Hover style - only change background color
             menu_button->get_style().hover_style = std::make_unique<WidgetStyle>();
-            menu_button->get_style().hover_style->background = ColorValue("accent_primary");  // Blue hover for visibility
-            menu_button->get_style().hover_style->text_color = ColorValue("white");  // White text on hover
-            menu_button->get_style().hover_style->font_size = SpacingValue(13);
-            menu_button->get_style().hover_style->padding = BoxSpacing(0, 10);  // Keep same padding
-            menu_button->get_style().hover_style->height = SizeValue(25);
-            menu_button->get_style().hover_style->border.width = SpacingValue(0);
-            menu_button->get_style().hover_style->border.color = ColorValue("transparent");
-            menu_button->get_style().hover_style->border.radius = SpacingValue(0);
-            menu_button->get_style().hover_style->text_color = ColorValue("gray_1");
+            menu_button->get_style().hover_style->background = ColorValue("gray_4");  // Gray hover background
             
             menu_button->set_on_click([this, items](StyledWidget*) {
                 // TODO: Show dropdown menu
@@ -469,7 +461,6 @@ private:
 private:
     std::string logo_text_;
     std::vector<std::pair<std::string, std::vector<MenuItem>>> menus_;
-    bool menus_built_ = false;
 };
 
 /**
@@ -690,7 +681,17 @@ public:
         tool_button->get_style()
             .set_width(SizeValue(32))
             .set_height(SizeValue(32))
-            .set_padding(BoxSpacing::all(4));
+            .set_padding(BoxSpacing::all(4))
+            .set_background(ColorValue("gray_4"))
+            .set_border(BorderStyle{
+                .width = SpacingValue(1.0f),
+                .color = ColorValue("gray_5"),
+                .radius = SpacingValue(4.0f)
+            });
+        
+        // Add hover state
+        tool_button->get_style().hover_style = std::make_unique<WidgetStyle>();
+        tool_button->get_style().hover_style->background = ColorValue("gray_3");
         
         // Active tool styling
         if (tool.id == active_tool_id_) {

@@ -71,6 +71,14 @@ struct ColorRGBA {
     static ColorRGBA white() { return {1, 1, 1, 1}; }
     static ColorRGBA black() { return {0, 0, 0, 1}; }
     static ColorRGBA transparent() { return {0, 0, 0, 0}; }
+    
+    // Comparison operators
+    bool operator==(const ColorRGBA& other) const {
+        return r == other.r && g == other.g && b == other.b && a == other.a;
+    }
+    bool operator!=(const ColorRGBA& other) const {
+        return !(*this == other);
+    }
 };
 
 // Professional theme for voxel editing (matches voxelux_complete_styles.md)

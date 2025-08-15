@@ -213,6 +213,9 @@ bool IconAsset::rasterize_svg(int target_size) {
     }
     
     // SVG rasterized: width x height with non_zero_count pixels
+    std::cout << "SVG rasterized: " << name_ << " size=" << width << "x" << height 
+              << " non_zero_pixels=" << non_zero_count 
+              << " max_alpha=" << max_alpha << std::endl;
     
     if (non_zero_count == 0) {
         std::cerr << "Warning: SVG rasterized to empty image (all pixels transparent)" << std::endl;
@@ -248,8 +251,10 @@ bool IconAsset::create_texture(const uint8_t* pixels, int width, int height, int
     }
     
     // Creating texture with specified dimensions and channels
+    std::cout << "Creating icon texture: " << width << "x" << height << " channels=" << channels << std::endl;
     
     glGenTextures(1, &texture_id_);
+    std::cout << "Generated texture ID: " << texture_id_ << std::endl;
     glBindTexture(GL_TEXTURE_2D, texture_id_);
     
     // Set texture parameters
@@ -463,6 +468,7 @@ void IconSystem::shutdown() {
 }
 
 bool IconSystem::load_icon(const std::string& name, const std::string& filepath) {
+    std::cout << "Loading icon: " << name << " from " << filepath << std::endl;
     auto icon = std::make_unique<IconAsset>(name);
     
     if (!icon->load_from_file(filepath)) {
@@ -470,6 +476,7 @@ bool IconSystem::load_icon(const std::string& name, const std::string& filepath)
         return false;
     }
     
+    std::cout << "Successfully loaded icon: " << name << std::endl;
     icons_[name] = std::move(icon);
     return true;
 }

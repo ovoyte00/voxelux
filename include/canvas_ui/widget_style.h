@@ -50,6 +50,14 @@ struct SpacingValue {
     
     // Resolve to actual pixels using theme
     float resolve(const ScaledTheme& theme) const;
+    
+    // Comparison operators
+    bool operator==(const SpacingValue& other) const {
+        return type == other.type && value == other.value;
+    }
+    bool operator!=(const SpacingValue& other) const {
+        return !(*this == other);
+    }
 };
 
 /**
@@ -92,6 +100,15 @@ struct BoxSpacing {
     bool is_right_auto() const { return right.type == SpacingValue::Auto; }
     bool is_top_auto() const { return top.type == SpacingValue::Auto; }
     bool is_bottom_auto() const { return bottom.type == SpacingValue::Auto; }
+    
+    // Comparison operators
+    bool operator==(const BoxSpacing& other) const {
+        return top == other.top && right == other.right && 
+               bottom == other.bottom && left == other.left;
+    }
+    bool operator!=(const BoxSpacing& other) const {
+        return !(*this == other);
+    }
 };
 
 /**
@@ -166,6 +183,19 @@ struct SizeValue {
     
     // Resolve to actual pixels
     float resolve(float parent_size, float content_size, const ScaledTheme& theme) const;
+    
+    // Comparison operators
+    bool operator==(const SizeValue& other) const {
+        if (unit != other.unit || value != other.value) return false;
+        if ((min_value == nullptr) != (other.min_value == nullptr)) return false;
+        if (min_value && *min_value != *other.min_value) return false;
+        if ((max_value == nullptr) != (other.max_value == nullptr)) return false;
+        if (max_value && *max_value != *other.max_value) return false;
+        return true;
+    }
+    bool operator!=(const SizeValue& other) const {
+        return !(*this == other);
+    }
 };
 
 /**
@@ -190,6 +220,17 @@ struct ColorValue {
     
     // Resolve to actual color
     ColorRGBA resolve(const ScaledTheme& theme) const;
+    
+    // Comparison operators
+    bool operator==(const ColorValue& other) const {
+        if (type != other.type) return false;
+        if (type == Direct) return color == other.color;
+        if (type == ThemeColor) return theme_ref == other.theme_ref;
+        return true;  // Both are Inherit
+    }
+    bool operator!=(const ColorValue& other) const {
+        return !(*this == other);
+    }
 };
 
 /**
@@ -221,6 +262,21 @@ struct BorderStyle {
     
     // Border gradient support added as member of WidgetStyle
     // (see border_gradient member below)
+    
+    // Comparison operators
+    bool operator==(const BorderStyle& other) const {
+        return width == other.width && color == other.color && 
+               radius == other.radius && style == other.style &&
+               width_top == other.width_top && width_right == other.width_right &&
+               width_bottom == other.width_bottom && width_left == other.width_left &&
+               radius_top_left == other.radius_top_left && radius_top_right == other.radius_top_right &&
+               radius_bottom_left == other.radius_bottom_left && radius_bottom_right == other.radius_bottom_right &&
+               color_top == other.color_top && color_right == other.color_right &&
+               color_bottom == other.color_bottom && color_left == other.color_left;
+    }
+    bool operator!=(const BorderStyle& other) const {
+        return !(*this == other);
+    }
 };
 
 /**
@@ -233,6 +289,16 @@ struct ShadowStyle {
     float spread = 0;
     ColorValue color = ColorValue(ColorRGBA(0, 0, 0, 0.2f));
     bool inset = false;
+    
+    // Comparison operators
+    bool operator==(const ShadowStyle& other) const {
+        return offset_x == other.offset_x && offset_y == other.offset_y &&
+               blur_radius == other.blur_radius && spread == other.spread &&
+               color == other.color && inset == other.inset;
+    }
+    bool operator!=(const ShadowStyle& other) const {
+        return !(*this == other);
+    }
 };
 
 /**

@@ -263,13 +263,12 @@ void CanvasRenderer::begin_frame() {
     check_gl_error("bind default framebuffer");
     
     
-    // **Canvas UI Professional Background System** - Now using proper theme colors
-    // UI rendering is confirmed working, switch to production colors
-    ColorRGBA bg = theme_.background_primary; // Professional dark background
-    glClearColor(bg.r, bg.g, bg.b, bg.a);
+    // Clear to the actual background color (gray_3)
+    // This prevents artifacts from showing through
+    glClearColor(0.34f, 0.34f, 0.34f, 1.0f);  // gray_3: #575757
     check_gl_error("clear color");
     
-    glClear(GL_COLOR_BUFFER_BIT);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     check_gl_error("clear");
     
 }
@@ -751,8 +750,8 @@ void CanvasRenderer::draw_circle_ring(const Point2D& center, float radius, const
 
 void CanvasRenderer::draw_text(const std::string& text, const Point2D& position, const ColorRGBA& color, 
                               float size, TextAlign align, TextBaseline baseline) {
-    // CRITICAL: Flush any pending rectangle batches before text rendering
-    // Text uses a different shader and immediate mode rendering
+    // CRITICAL: Flush current batch AND render batches before text
+    // Text uses immediate mode with a different shader
     flush_current_batch();
     render_sorted_batches();
     
@@ -813,8 +812,7 @@ void CanvasRenderer::draw_text(const std::string& text, const Point2D& position,
         
         font_system_->render_text(this, text, adjusted_pos, "Inter", static_cast<int>(size), color);
         
-        // After text rendering, reset batch state since text uses its own shader
-        // This ensures subsequent rectangle batches start fresh
+        // Reset batch state after text rendering
         current_batch_.reset();
     }
 }
@@ -2264,99 +2262,47 @@ void CanvasRenderer::bind_texture(GLuint texture_id, int unit) {
 }
 
 void CanvasRenderer::draw_texture(GLuint texture_id, const Rect2D& rect, const ColorRGBA& tint) {
-    // Save current state
-    GLboolean blend_enabled;
-    glGetBooleanv(GL_BLEND, &blend_enabled);
+    // Professional batched rendering - add to batch instead of immediate mode
     
-    // Enable blending for texture rendering
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    
-    // Use the UI shader
-    ui_shader_->use();
-    
-    // Set projection matrix - standard orthographic projection
-    // The viewport dimensions already account for the physical pixel size
-    float projection[16] = {
-        2.0f / viewport_width_,  0,                        0, 0,
-        0,                      -2.0f / viewport_height_,  0, 0,
-        0,                       0,                       -1, 0,
-        -1,                      1,                        0, 1
-    };
-    ui_shader_->set_uniform("u_projection", projection, 16);
-    ui_shader_->set_uniform("u_has_texture", 1);
-    
-    // Bind the texture
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, texture_id);
-    ui_shader_->set_uniform("u_texture", 0);
-    
-    // Setup vertex data with texture coordinates
-    struct TexturedVertex {
-        float x, y;
-        float u, v;
-        float r, g, b, a;
-    };
-    
-    TexturedVertex vertices[4] = {
-        // Bottom-left
-        {rect.x, rect.y + rect.height, 
-         0.0f, 1.0f,
-         tint.r, tint.g, tint.b, tint.a},
-        // Bottom-right
-        {rect.x + rect.width, rect.y + rect.height,
-         1.0f, 1.0f,
-         tint.r, tint.g, tint.b, tint.a},
-        // Top-right
-        {rect.x + rect.width, rect.y,
-         1.0f, 0.0f,
-         tint.r, tint.g, tint.b, tint.a},
-        // Top-left
-        {rect.x, rect.y,
-         0.0f, 0.0f,
-         tint.r, tint.g, tint.b, tint.a}
-    };
-    
-    unsigned int indices[6] = {
-        0, 1, 2,
-        2, 3, 0
-    };
-    
-    // Upload vertex data
-    glBindVertexArray(ui_vao_);
-    glBindBuffer(GL_ARRAY_BUFFER, ui_vbo_);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_DYNAMIC_DRAW);
-    
-    // Setup vertex attributes
-    // Position
-    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(TexturedVertex), (void*)0);
-    glEnableVertexAttribArray(0);
-    
-    // Texture coords
-    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(TexturedVertex), (void*)(2 * sizeof(float)));
-    glEnableVertexAttribArray(1);
-    
-    // Color
-    glVertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, sizeof(TexturedVertex), (void*)(4 * sizeof(float)));
-    glEnableVertexAttribArray(2);
-    
-    // Upload indices
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ui_ebo_);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_DYNAMIC_DRAW);
-    
-    // Draw
-    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
-    
-    // Cleanup
-    glDisableVertexAttribArray(1); // Disable texture coord attribute
-    ui_shader_->set_uniform("u_has_texture", 0);
-    glBindTexture(GL_TEXTURE_2D, 0);
-    glBindVertexArray(0);
-    
-    // Restore blend state
-    if (!blend_enabled) {
-        glDisable(GL_BLEND);
+    if (!glIsTexture(texture_id)) {
+        std::cerr << "ERROR: Invalid texture ID " << texture_id << std::endl;
+        return;
     }
+    
+    // Check if we need to flush (different texture or shader state)
+    GLuint shader_id = ui_shader_->get_id();
+    GLenum blend_mode = GL_SRC_ALPHA;
+    
+    if (!current_batch_.can_batch_with(texture_id, blend_mode, shader_id)) {
+        // Flush current batch before starting new one with different texture
+        flush_current_batch();
+        current_batch_.texture_id = texture_id;
+        current_batch_.blend_mode = blend_mode;
+        current_batch_.shader_id = shader_id;
+    }
+    
+    // Add vertices to batch - same as draw_rect but with proper texture coords
+    uint32_t base_index = current_batch_.vertices.size();
+    
+    // Add vertices with proper texture coordinates (0,0 to 1,1 for full texture)
+    current_batch_.vertices.push_back(UIVertex(rect.x, rect.y, 0.0f, 0.0f, 
+                                               tint.r, tint.g, tint.b, tint.a));
+    current_batch_.vertices.push_back(UIVertex(rect.x + rect.width, rect.y, 1.0f, 0.0f,
+                                               tint.r, tint.g, tint.b, tint.a));
+    current_batch_.vertices.push_back(UIVertex(rect.x + rect.width, rect.y + rect.height, 1.0f, 1.0f,
+                                               tint.r, tint.g, tint.b, tint.a));
+    current_batch_.vertices.push_back(UIVertex(rect.x, rect.y + rect.height, 0.0f, 1.0f,
+                                               tint.r, tint.g, tint.b, tint.a));
+    
+    // Add indices for the quad
+    current_batch_.indices.push_back(base_index + 0);
+    current_batch_.indices.push_back(base_index + 1);
+    current_batch_.indices.push_back(base_index + 2);
+    current_batch_.indices.push_back(base_index + 0);
+    current_batch_.indices.push_back(base_index + 2);
+    current_batch_.indices.push_back(base_index + 3);
+    
+    vertices_this_frame_ += 4;
 }
 
 void CanvasRenderer::draw_sdf_texture(GLuint sdf_texture_id, const Rect2D& rect, const ColorRGBA& tint,

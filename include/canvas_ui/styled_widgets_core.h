@@ -145,20 +145,26 @@ protected:
         Rect2D content_bounds = get_content_bounds();
         IconSystem& icon_system = IconSystem::get_instance();
         
-        // Center the icon
+        // Get the icon asset from the system
+        IconAsset* icon_asset = icon_system.get_icon(icon_name_);
+        if (!icon_asset) {
+            // Icon not found - render a placeholder rectangle for debugging
+            ColorRGBA debug_color(1.0f, 0.0f, 0.0f, 0.5f); // Semi-transparent red
+            renderer->draw_rect(content_bounds, debug_color);
+            return;
+        }
+        
+        // Icon should be rendered from top-left, not centered
+        // The icon render function expects the top-left corner position
         Point2D icon_pos(
-            content_bounds.x + content_bounds.width / 2,
-            content_bounds.y + content_bounds.height / 2
+            content_bounds.x,
+            content_bounds.y
         );
         
         float icon_size = std::min(content_bounds.width, content_bounds.height);
         ColorRGBA color = icon_color_.a > 0 ? icon_color_ : computed_style_.text_color_rgba;
         
-        // Get the icon asset from the system
-        IconAsset* icon_asset = IconSystem::get_instance().get_icon(icon_name_);
-        if (icon_asset) {
-            icon_asset->render(renderer, icon_pos, icon_size, color);
-        }
+        icon_asset->render(renderer, icon_pos, icon_size, color);
     }
     
 private:
@@ -174,22 +180,9 @@ class Button : public StyledWidget {
 public:
     explicit Button(const std::string& text = "") 
         : StyledWidget("button"), text_(text) {
-        // Default button styling
-        base_style_.display = WidgetStyle::Display::InlineBlock;
-        base_style_.padding = BoxSpacing::theme();
-        base_style_.background = ColorValue("gray_4");
-        base_style_.border.width = SpacingValue(1.0f);
-        base_style_.border.color = ColorValue("gray_5");
-        base_style_.border.radius = SpacingValue(4.0f);
+        // No default styling - let the user decide
+        // Just set the cursor to indicate it's clickable
         base_style_.cursor = "pointer";
-        
-        // Hover state
-        base_style_.hover_style = std::make_unique<WidgetStyle>();
-        base_style_.hover_style->background = ColorValue("gray_3");
-        
-        // Active state  
-        base_style_.active_style = std::make_unique<WidgetStyle>();
-        base_style_.active_style->background = ColorValue("accent_primary");
     }
     
     void set_text(const std::string& text) { 
