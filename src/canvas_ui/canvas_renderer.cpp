@@ -244,6 +244,7 @@ void CanvasRenderer::shutdown() {
 
 void CanvasRenderer::begin_frame() {
     // Frame begins
+    frame_id_++;  // Increment frame counter
     
     draw_calls_this_frame_ = 0;
     vertices_this_frame_ = 0;
@@ -750,6 +751,8 @@ void CanvasRenderer::draw_circle_ring(const Point2D& center, float radius, const
 
 void CanvasRenderer::draw_text(const std::string& text, const Point2D& position, const ColorRGBA& color, 
                               float size, TextAlign align, TextBaseline baseline) {
+    // Text rendering - duplicates fixed by removing redundant build_menus() call
+    
     // CRITICAL: Flush current batch AND render batches before text
     // Text uses immediate mode with a different shader
     flush_current_batch();
@@ -855,6 +858,7 @@ void CanvasRenderer::draw_widget(const Rect2D& rect, const ColorRGBA& color,
     ui_shader_->set_uniform("u_border_color", border_color);
     ui_shader_->set_uniform("u_aa_radius", 1.0f); // Anti-aliasing radius in pixels
     ui_shader_->set_uniform("u_texture", 0);
+    ui_shader_->set_uniform("u_has_texture", 0);  // Disable texture path for SDF rendering
     
     // Ensure texture is valid before binding
     if (white_texture_ == 0 || !glIsTexture(white_texture_)) {
@@ -2568,7 +2572,13 @@ void main() {
         return;
     }
     
-    // Original SDF path for UI widgets
+    // Fast path for simple rectangles (no rounded corners, no border)
+    if (u_corner_radius == vec4(0.0) && u_border_width == 0.0) {
+        fragColor = v_color;
+        return;
+    }
+    
+    // SDF path for rounded rectangles and borders
     vec2 widget_size = u_widget_rect.zw;
     vec2 widget_center = widget_size * 0.5;
     vec2 local_pos = v_position - u_widget_rect.xy;

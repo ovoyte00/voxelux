@@ -263,6 +263,7 @@ public:
     // Statistics
     int get_draw_calls_this_frame() const { return draw_calls_this_frame_; }
     int get_vertices_this_frame() const { return vertices_this_frame_; }
+    int get_frame_id() const { return frame_id_; }  // Get current frame ID for duplicate detection
     
     // Dirty rectangle management
     void mark_dirty(const Rect2D& rect) { dirty_tracker_.mark_dirty(rect); }
@@ -444,6 +445,7 @@ private:
     // Statistics
     int draw_calls_this_frame_ = 0;
     int vertices_this_frame_ = 0;
+    int frame_id_ = 0;  // Frame counter for duplicate detection
     
     // Transform matrix stack
     struct TransformState {

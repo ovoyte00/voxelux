@@ -15,23 +15,13 @@
 #include "canvas_ui/styled_widgets.h"
 #include "canvas_ui/render_block.h"
 #include <iostream>
+#include <chrono>
 
 namespace voxel_canvas {
 
 void VoxeluxLayout::render(CanvasRenderer* renderer) {
-    // If the menu bar needs to build its items, do it now with a RenderBlock
-    if (menu_bar_ && menu_bar_->get_children().empty()) {
-        // Use RenderBlock for efficient menu construction
-        RenderBlock block("menu-build");
-        block.begin();
-        
-        // Build the menu items
-        menu_bar_->build_menus();
-        
-        // End the block with the proper theme
-        ScaledTheme theme = renderer->get_scaled_theme();
-        block.end(theme);
-    }
+    // The menu bar is already built in build_layout(), no need to check here
+    // This was causing potential issues with duplicate builds
     
     // Normal rendering
     Container::render(renderer);

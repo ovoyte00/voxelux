@@ -13,6 +13,8 @@
 #include <numeric>
 #include <iostream>
 #include <cmath>
+#include <unordered_map>
+#include <chrono>
 
 namespace voxel_canvas {
 
@@ -106,6 +108,27 @@ bool StyledWidget::has_state(WidgetState state) const {
 
 void StyledWidget::add_child(std::shared_ptr<StyledWidget> child) {
     if (child) {
+        // Debug: Check for duplicate children and self-reference
+        if (child.get() == this) {
+            std::cout << "ERROR: Widget trying to add itself as child! " << get_widget_type() 
+                      << " " << id_ << std::endl;
+            return;
+        }
+        
+        for (const auto& existing : children_) {
+            if (existing == child) {
+                std::cout << "WARNING: Attempting to add duplicate child to " << get_widget_type() 
+                          << " " << id_ << std::endl;
+                return;  // Don't add duplicates
+            }
+        }
+        
+        // Log what's being added
+        if (get_widget_type() == "voxelux-layout" || child->get_widget_type() == "voxelux-layout") {
+            std::cout << "Adding " << child->get_widget_type() << " " << child->get_id() 
+                      << " to " << get_widget_type() << " " << id_ << std::endl;
+        }
+        
         children_.push_back(child);
         child->set_parent(this);
         invalidate_layout();
@@ -227,13 +250,7 @@ Point2D StyledWidget::get_content_size() const {
 void StyledWidget::render(CanvasRenderer* renderer) {
     if (!visible_) return;
     
-    // Debug: Track if buttons are being rendered
-    static int frame_counter = 0;
-    if (get_widget_type() == "button" && is_hovered()) {
-        std::cout << "RENDER BUTTON (frame " << frame_counter << "): " << id_ 
-                  << " hovered=" << is_hovered() << std::endl;
-    }
-    frame_counter++;
+    // Duplicate rendering issue fixed - removed redundant build_menus() call
     
     // Check visibility property
     if (computed_style_.visibility == WidgetStyle::Visibility::Hidden ||
@@ -315,7 +332,17 @@ void StyledWidget::render_background(CanvasRenderer* renderer) {
     
     // Render background layers in order (first layer is bottom-most)
     // 1. Background color (always bottom)
-    if (computed_style_.background_color.a > 0) {
+    
+    // Debug: Check what background is being rendered for text widgets
+    if (get_widget_type() == "text" && computed_style_.background_color.a > 0) {
+        std::cout << "TEXT WIDGET HAS BACKGROUND: " << id_ 
+                  << " color=(" << computed_style_.background_color.r << ", " 
+                  << computed_style_.background_color.g << ", "
+                  << computed_style_.background_color.b << ", "
+                  << computed_style_.background_color.a << ")" << std::endl;
+    }
+    
+    if (computed_style_.background_color.a > 0.001f) {  // Use epsilon to avoid floating point issues
         // Handle border radius
         if (computed_style_.border_radius_tl > 0 || computed_style_.border_radius_tr > 0 ||
             computed_style_.border_radius_bl > 0 || computed_style_.border_radius_br > 0) {
@@ -525,6 +552,17 @@ void StyledWidget::render_content(CanvasRenderer* renderer) {
 }
 
 void StyledWidget::render_children(CanvasRenderer* renderer) {
+    // Debug: Track how many times children are rendered
+    static int children_render_count = 0;
+    if (!children_.empty()) {
+        children_render_count++;
+        if (get_widget_type() == "text" || (children_render_count % 100 == 1)) {
+            std::cout << "RENDER_CHILDREN #" << children_render_count 
+                      << " for " << get_widget_type() << " " << id_ 
+                      << " with " << children_.size() << " children" << std::endl;
+        }
+    }
+    
     for (auto& child : children_) {
         if (child->is_visible()) {
             child->render(renderer);

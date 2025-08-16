@@ -547,6 +547,10 @@ uniform vec4 textColor;
 
 void main() {
     float alpha = texture(text, TexCoords).r;
+    // Ensure we only render where there's actual glyph data
+    if (alpha < 0.01) {
+        discard;  // Don't render pixels with very low alpha
+    }
     FragColor = vec4(textColor.rgb, textColor.a * alpha);
 }
 )";
@@ -654,6 +658,14 @@ void FontSystem::flush_batch(CanvasRenderer* renderer, unsigned int texture_id, 
         return;
     }
     
+    // Save current GL state
+    GLint current_program;
+    glGetIntegerv(GL_CURRENT_PROGRAM, &current_program);
+    GLint current_vao;
+    glGetIntegerv(GL_VERTEX_ARRAY_BINDING, &current_vao);
+    GLint current_texture;
+    glGetIntegerv(GL_TEXTURE_BINDING_2D, &current_texture);
+    
     // Use text shader
     glUseProgram(text_shader_program_);
     
@@ -691,10 +703,10 @@ void FontSystem::flush_batch(CanvasRenderer* renderer, unsigned int texture_id, 
     // Draw
     glDrawArrays(GL_TRIANGLES, 0, vertex_batch_.size());
     
-    // Cleanup
-    glBindVertexArray(0);
-    glBindTexture(GL_TEXTURE_2D, 0);
-    glUseProgram(0);
+    // Restore previous GL state
+    glBindVertexArray(current_vao);
+    glBindTexture(GL_TEXTURE_2D, current_texture);
+    glUseProgram(current_program);
     
     // Clear batch
     vertex_batch_.clear();
