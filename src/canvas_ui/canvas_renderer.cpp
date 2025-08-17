@@ -20,6 +20,7 @@
 #include <sstream>
 #include <cmath>
 #include <algorithm>
+#include <cstddef>  // For offsetof
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -253,6 +254,10 @@ void CanvasRenderer::begin_frame() {
     render_batches_.clear();
     batch_render_order_.clear();
     
+    // CRITICAL: Clear current batch to prevent stale data
+    current_batch_.vertices.clear();
+    current_batch_.indices.clear();
+    
     // Start occlusion tracking for this frame
     occlusion_tracker_.begin_frame();
     
@@ -266,7 +271,9 @@ void CanvasRenderer::begin_frame() {
     
     // Clear to the actual background color (gray_3)
     // This prevents artifacts from showing through
-    glClearColor(0.34f, 0.34f, 0.34f, 1.0f);  // gray_3: #575757
+    // Clear to dark theme background
+    ColorRGBA bg_color = theme_.background_primary;
+    glClearColor(bg_color.r, bg_color.g, bg_color.b, bg_color.a);
     check_gl_error("clear color");
     
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -275,7 +282,10 @@ void CanvasRenderer::begin_frame() {
 }
 
 void CanvasRenderer::end_frame() {
-    // Flush any pending batched draw calls
+    // Flush any pending instance data FIRST (most efficient)
+    flush_instances();
+    
+    // Flush any pending batched draw calls (for text/icons)
     flush_current_batch();
     
     // Render all batches sorted by state
@@ -306,6 +316,7 @@ void CanvasRenderer::end_frame() {
 void CanvasRenderer::present_frame() {
     // Swap buffers handled by CanvasWindow
 }
+
 
 void CanvasRenderer::set_viewport(int x, int y, int width, int height) {
     viewport_x_ = x;
@@ -373,31 +384,44 @@ ScaledTheme CanvasRenderer::get_scaled_theme() const {
 }
 
 void CanvasRenderer::draw_rect(const Rect2D& rect, const ColorRGBA& color) {
-    // **Canvas UI Professional Batched Rendering**
-    // Accumulate draw calls into batches for massive performance improvement
+    // Use the new instance rendering system for massive performance improvement
+    // This reduces draw calls from hundreds to just one!
+    add_widget_instance(rect, color, 0.0f, 0.0f, ColorRGBA(0,0,0,0));
+}
+
+void CanvasRenderer::draw_rect_outline(const Rect2D& rect, const ColorRGBA& color, float line_width) {
+    // Convert to batched rendering - draw 4 rectangles for the outline
+    // Top border
+    draw_rect(Rect2D(rect.x, rect.y, rect.width, line_width), color);
+    // Right border
+    draw_rect(Rect2D(rect.x + rect.width - line_width, rect.y, line_width, rect.height), color);
+    // Bottom border
+    draw_rect(Rect2D(rect.x, rect.y + rect.height - line_width, rect.width, line_width), color);
+    // Left border
+    draw_rect(Rect2D(rect.x, rect.y, line_width, rect.height), color);
+}
+
+// UI line drawing using batched rectangles
+void CanvasRenderer::draw_line_batched(const Point2D& start, const Point2D& end, const ColorRGBA& color, float width) {
+    // Calculate line as a rotated rectangle for batched rendering
+    Point2D dir(end.x - start.x, end.y - start.y);
+    float length = std::sqrt(dir.x * dir.x + dir.y * dir.y);
+    if (length == 0) return;
     
-    // Validate shader state first
+    dir.x /= length;
+    dir.y /= length;
+    
+    Point2D normal(-dir.y * width * 0.5f, dir.x * width * 0.5f);
+    
+    // Check if we can batch with current batch
     if (!ui_shader_ || !ui_shader_->is_valid()) {
-        std::cerr << "ERROR: UI shader not valid in draw_rect!" << std::endl;
         return;
     }
     
-    // Ensure white texture exists
-    if (white_texture_ == 0 || !glIsTexture(white_texture_)) {
-        GLubyte white_pixel[4] = {255, 255, 255, 255};
-        glGenTextures(1, &white_texture_);
-        glBindTexture(GL_TEXTURE_2D, white_texture_);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 1, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, white_pixel);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    }
-    
-    // Check if we can batch with current batch
     GLuint shader_id = ui_shader_->get_id();
-    GLenum blend_mode = GL_SRC_ALPHA; // Use proper alpha blending for UI elements
+    GLenum blend_mode = GL_SRC_ALPHA;
     
     if (!current_batch_.can_batch_with(white_texture_, blend_mode, shader_id)) {
-        // Flush current batch before starting new one
         flush_current_batch();
         current_batch_.texture_id = white_texture_;
         current_batch_.blend_mode = blend_mode;
@@ -407,10 +431,10 @@ void CanvasRenderer::draw_rect(const Rect2D& rect, const ColorRGBA& color) {
     // Add vertices to batch
     uint32_t base_index = current_batch_.vertices.size();
     
-    current_batch_.vertices.push_back(UIVertex(rect.x, rect.y, 0, 0, color.r, color.g, color.b, color.a));
-    current_batch_.vertices.push_back(UIVertex(rect.x + rect.width, rect.y, 1, 0, color.r, color.g, color.b, color.a));
-    current_batch_.vertices.push_back(UIVertex(rect.x + rect.width, rect.y + rect.height, 1, 1, color.r, color.g, color.b, color.a));
-    current_batch_.vertices.push_back(UIVertex(rect.x, rect.y + rect.height, 0, 1, color.r, color.g, color.b, color.a));
+    current_batch_.vertices.push_back(UIVertex(start.x - normal.x, start.y - normal.y, 0, 0, color.r, color.g, color.b, color.a));
+    current_batch_.vertices.push_back(UIVertex(end.x - normal.x, end.y - normal.y, 1, 0, color.r, color.g, color.b, color.a));
+    current_batch_.vertices.push_back(UIVertex(end.x + normal.x, end.y + normal.y, 1, 1, color.r, color.g, color.b, color.a));
+    current_batch_.vertices.push_back(UIVertex(start.x + normal.x, start.y + normal.y, 0, 1, color.r, color.g, color.b, color.a));
     
     // Add indices
     current_batch_.indices.push_back(base_index + 0);
@@ -420,18 +444,11 @@ void CanvasRenderer::draw_rect(const Rect2D& rect, const ColorRGBA& color) {
     current_batch_.indices.push_back(base_index + 2);
     current_batch_.indices.push_back(base_index + 3);
     
-    // Update statistics
     vertices_this_frame_ += 4;
 }
 
-void CanvasRenderer::draw_rect_outline(const Rect2D& rect, const ColorRGBA& color, float line_width) {
-    draw_line(Point2D(rect.x, rect.y), Point2D(rect.x + rect.width, rect.y), color, line_width);
-    draw_line(Point2D(rect.x + rect.width, rect.y), Point2D(rect.x + rect.width, rect.y + rect.height), color, line_width);
-    draw_line(Point2D(rect.x + rect.width, rect.y + rect.height), Point2D(rect.x, rect.y + rect.height), color, line_width);
-    draw_line(Point2D(rect.x, rect.y + rect.height), Point2D(rect.x, rect.y), color, line_width);
-}
-
-void CanvasRenderer::draw_line(const Point2D& start, const Point2D& end, const ColorRGBA& color, float width) {
+// Viewport immediate rendering - for 3D overlays like navigation widget
+void CanvasRenderer::draw_viewport_line(const Point2D& start, const Point2D& end, const ColorRGBA& color, float width) {
     // Use polyline shader if available and line is thick
     if (polyline_shader_ && polyline_shader_->is_valid() && width > 1.0f) {
         polyline_shader_->use();
@@ -546,7 +563,8 @@ void CanvasRenderer::draw_line(const Point2D& start, const Point2D& end, const C
     vertices_this_frame_ += 4;
 }
 
-void CanvasRenderer::draw_circle(const Point2D& center, float radius, const ColorRGBA& color, int segments) {
+// Viewport immediate rendering - for 3D overlays like navigation widget
+void CanvasRenderer::draw_viewport_circle(const Point2D& center, float radius, const ColorRGBA& color, int segments) {
     if (!ui_shader_ || !ui_shader_->is_valid()) {
         std::cerr << "ERROR: UI shader not valid for circle!" << std::endl;
         return;
@@ -656,7 +674,8 @@ void CanvasRenderer::draw_circle(const Point2D& center, float radius, const Colo
     glUseProgram(0);
 }
 
-void CanvasRenderer::draw_circle_ring(const Point2D& center, float radius, const ColorRGBA& color, float thickness, int segments) {
+// Viewport immediate rendering - for 3D overlays like navigation widget
+void CanvasRenderer::draw_viewport_circle_ring(const Point2D& center, float radius, const ColorRGBA& color, float thickness, int segments) {
     // Draw ring (hollow circle) using triangle strip
     if (!ui_shader_ || !ui_shader_->is_valid()) {
         return;
@@ -751,12 +770,12 @@ void CanvasRenderer::draw_circle_ring(const Point2D& center, float radius, const
 
 void CanvasRenderer::draw_text(const std::string& text, const Point2D& position, const ColorRGBA& color, 
                               float size, TextAlign align, TextBaseline baseline) {
-    // Text rendering - duplicates fixed by removing redundant build_menus() call
+    // NEW: Batch text rendering - no more immediate mode!
+    // Text will be rendered as textured quads in the same batch system as UI
+    // Text is now batched with UI rendering - no more immediate mode!
     
-    // CRITICAL: Flush current batch AND render batches before text
-    // Text uses immediate mode with a different shader
-    flush_current_batch();
-    render_sorted_batches();
+    // DON'T flush batches - text will be part of the batch!
+    // This is the key to unified rendering
     
     if (font_system_) {
         Point2D adjusted_pos = position;
@@ -764,8 +783,7 @@ void CanvasRenderer::draw_text(const std::string& text, const Point2D& position,
         // Get actual font metrics from the font system
         FontFace* font = font_system_->get_font("Inter");
         if (!font) {
-            // Fallback if font not found
-            font_system_->render_text(this, text, adjusted_pos, "Inter", static_cast<int>(size), color);
+            // Font not found - can't render
             return;
         }
         
@@ -813,78 +831,107 @@ void CanvasRenderer::draw_text(const std::string& text, const Point2D& position,
                 break;
         }
         
-        font_system_->render_text(this, text, adjusted_pos, "Inter", static_cast<int>(size), color);
+        // NEW: Batch text rendering
+        // Get glyphs and add them as textured quads to the current batch
+        batch_text(text, adjusted_pos, "Inter", static_cast<int>(size), color);
+    }
+}
+
+void CanvasRenderer::batch_text(const std::string& text, const Point2D& position,
+                               const std::string& font_name, int size, const ColorRGBA& color) {
+    if (!font_system_ || text.empty()) {
+        return;
+    }
+    
+    FontFace* font = font_system_->get_font(font_name);
+    if (!font) {
+        return;
+    }
+    
+    float x = position.x;
+    float y = position.y;
+    float baseline_y = y + font->get_ascender(size);
+    
+    // Process each character
+    for (size_t i = 0; i < text.length(); ) {
+        unsigned int codepoint = 0;
+        // Simple ASCII extraction for now
+        if (i < text.length()) {
+            codepoint = static_cast<unsigned char>(text[i]);
+            i++;
+        }
         
-        // Reset batch state after text rendering
-        current_batch_.reset();
+        GlyphInfo* glyph = font->get_glyph(codepoint, size);
+        if (glyph && glyph->texture_id) {
+            // Calculate glyph position
+            float glyph_x = x + glyph->bearing.x;
+            float glyph_y = baseline_y - glyph->bearing.y;
+            float glyph_w = glyph->size.x;
+            float glyph_h = glyph->size.y;
+            
+            // Check if we need to switch textures
+            if (!current_batch_.can_batch_with(glyph->texture_id, GL_SRC_ALPHA, ui_shader_->get_id())) {
+                flush_current_batch();
+                current_batch_.texture_id = glyph->texture_id;
+                current_batch_.blend_mode = GL_SRC_ALPHA;
+                current_batch_.shader_id = ui_shader_->get_id();
+            }
+            
+            // Always mark as text batch when rendering glyphs
+            current_batch_.is_text = true;
+            
+            // Add glyph quad to batch
+            uint32_t base_index = current_batch_.vertices.size();
+            
+            // Calculate UVs
+            float u0 = 0.0f, v0 = 0.0f, u1 = 1.0f, v1 = 1.0f;
+            if (glyph->in_atlas) {
+                u0 = glyph->uv_rect.x;
+                v0 = glyph->uv_rect.y;
+                u1 = glyph->uv_rect.x + glyph->uv_rect.width;
+                v1 = glyph->uv_rect.y + glyph->uv_rect.height;
+            }
+            
+            // Add vertices (with texture coords)
+            current_batch_.vertices.push_back(UIVertex(
+                glyph_x, glyph_y, u0, v0,
+                color.r, color.g, color.b, color.a
+            ));
+            current_batch_.vertices.push_back(UIVertex(
+                glyph_x + glyph_w, glyph_y, u1, v0,
+                color.r, color.g, color.b, color.a
+            ));
+            current_batch_.vertices.push_back(UIVertex(
+                glyph_x + glyph_w, glyph_y + glyph_h, u1, v1,
+                color.r, color.g, color.b, color.a
+            ));
+            current_batch_.vertices.push_back(UIVertex(
+                glyph_x, glyph_y + glyph_h, u0, v1,
+                color.r, color.g, color.b, color.a
+            ));
+            
+            // Add indices
+            current_batch_.indices.push_back(base_index + 0);
+            current_batch_.indices.push_back(base_index + 1);
+            current_batch_.indices.push_back(base_index + 2);
+            current_batch_.indices.push_back(base_index + 2);
+            current_batch_.indices.push_back(base_index + 3);
+            current_batch_.indices.push_back(base_index + 0);
+        }
+        
+        if (glyph) {
+            x += glyph->advance;
+        }
     }
 }
 
 void CanvasRenderer::draw_widget(const Rect2D& rect, const ColorRGBA& color,
                                 float corner_radius, float border_width,
                                 const ColorRGBA& border_color) {
-    if (!ui_shader_ || !ui_shader_->is_valid()) {
-        return;
-    }
-    
-    // Create quad vertices for the widget
-    UIVertex vertices[4] = {
-        UIVertex(rect.x, rect.y, 0, 0, color.r, color.g, color.b, color.a),
-        UIVertex(rect.x + rect.width, rect.y, 1, 0, color.r, color.g, color.b, color.a),
-        UIVertex(rect.x + rect.width, rect.y + rect.height, 1, 1, color.r, color.g, color.b, color.a),
-        UIVertex(rect.x, rect.y + rect.height, 0, 1, color.r, color.g, color.b, color.a)
-    };
-    
-    uint32_t indices[6] = {0, 1, 2, 0, 2, 3};
-    
-    // Set up shader and projection
-    ui_shader_->use();
-    
-    // Set projection matrix (critical for proper rendering)
-    float vp_width = std::max(1.0f, (float)viewport_width_);
-    float vp_height = std::max(1.0f, (float)viewport_height_);
-    float projection[16] = {
-        2.0f / vp_width,  0,                  0, 0,
-        0,               -2.0f / vp_height,    0, 0,
-        0,                0,                  -1, 0,
-        -1,               1,                   0, 1
-    };
-    ui_shader_->set_uniform("u_projection", projection, 16);
-    
-    // Set up SDF uniforms
-    ui_shader_->set_uniform("u_widget_rect", ColorRGBA(rect.x, rect.y, rect.width, rect.height));
-    ui_shader_->set_uniform("u_corner_radius", ColorRGBA(corner_radius, corner_radius, corner_radius, corner_radius));
-    ui_shader_->set_uniform("u_border_width", border_width);
-    ui_shader_->set_uniform("u_border_color", border_color);
-    ui_shader_->set_uniform("u_aa_radius", 1.0f); // Anti-aliasing radius in pixels
-    ui_shader_->set_uniform("u_texture", 0);
-    ui_shader_->set_uniform("u_has_texture", 0);  // Disable texture path for SDF rendering
-    
-    // Ensure texture is valid before binding
-    if (white_texture_ == 0 || !glIsTexture(white_texture_)) {
-        // Recreate texture if invalid
-        GLubyte white_pixel[4] = {255, 255, 255, 255};
-        glGenTextures(1, &white_texture_);
-        glBindTexture(GL_TEXTURE_2D, white_texture_);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 1, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, white_pixel);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    } else {
-        glBindTexture(GL_TEXTURE_2D, white_texture_);
-    }
-    
-    glBindVertexArray(ui_vao_);
-    glBindBuffer(GL_ARRAY_BUFFER, ui_vbo_);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STREAM_DRAW);
-    
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ui_ebo_);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STREAM_DRAW);
-    
-    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
-    // DON'T flush here - let OpenGL batch commands properly
-    
-    ui_shader_->unuse();
-    glBindVertexArray(0);
+    // Use the instance rendering system for single-pass widget rendering
+    // This properly handles fill, border, and outline in the shader without overlapping geometry
+    // No outline for this simplified version - use add_widget_instance directly for full control
+    add_widget_instance(rect, color, corner_radius, border_width, border_color, 0.0f, 0.0f, ColorRGBA(0,0,0,0));
 }
 
 void CanvasRenderer::draw_rounded_rect(const Rect2D& rect, const ColorRGBA& color, float corner_radius) {
@@ -1231,7 +1278,9 @@ void CanvasRenderer::draw_radial_gradient(const Rect2D& rect, const Point2D& cen
         
         // Draw filled ellipse (approximated with circle for now)
         float avg_radius = (current_rx + current_ry) / 2;
-        draw_circle(center, avg_radius, color, 32);
+        // TODO: Implement batched circle drawing for gradients
+        // For now, approximate with a rectangle
+        draw_rect(Rect2D(center.x - avg_radius, center.y - avg_radius, avg_radius * 2, avg_radius * 2), color);
     }
 }
 
@@ -1260,9 +1309,11 @@ void CanvasRenderer::draw_conic_gradient(const Rect2D& rect, const Point2D& cent
         Point2D p3(center.x + radius * std::cos(rad2), center.y + radius * std::sin(rad2));
         
         // Draw triangle (simplified - would need proper triangle rendering)
-        draw_line(p1, p2, color, 1);
-        draw_line(p2, p3, color, 1);
-        draw_line(p3, p1, color, 1);
+        // TODO: Implement proper triangle rendering for conic gradients
+        // For now, use batched lines
+        draw_line_batched(p1, p2, color, 1);
+        draw_line_batched(p2, p3, color, 1);
+        draw_line_batched(p3, p1, color, 1);
     }
 }
 
@@ -1823,7 +1874,7 @@ void CanvasRenderer::draw_dashed_line(const Point2D& start, const Point2D& end,
         Point2D segment_start(start.x + dx * dash_start, start.y + dy * dash_start);
         Point2D segment_end(start.x + dx * dash_end, start.y + dy * dash_end);
         
-        draw_line(segment_start, segment_end, color, width);
+        draw_line_batched(segment_start, segment_end, color, width);
     }
 }
 
@@ -1843,7 +1894,9 @@ void CanvasRenderer::draw_dotted_line(const Point2D& start, const Point2D& end,
     for (int i = 0; i < num_dots; i++) {
         float t = i * dot_spacing;
         Point2D dot_center(start.x + dx * t, start.y + dy * t);
-        draw_circle(dot_center, width / 2, color, 8);
+        // Draw dot as a small rectangle for batched rendering
+        float dot_radius = width / 2;
+        draw_rect(Rect2D(dot_center.x - dot_radius, dot_center.y - dot_radius, dot_radius * 2, dot_radius * 2), color);
     }
 }
 
@@ -2085,6 +2138,130 @@ void CanvasRenderer::flush_current_batch() {
     current_batch_.reset();
 }
 
+// Instance rendering implementation
+void CanvasRenderer::begin_instance_batch() {
+    instance_data_.clear();
+}
+
+void CanvasRenderer::add_widget_instance(const Rect2D& rect, const ColorRGBA& color,
+                                        float corner_radius, float border_width,
+                                        const ColorRGBA& border_color,
+                                        float outline_width, float outline_offset,
+                                        const ColorRGBA& outline_color) {
+    if (instance_data_.size() >= max_instances_) {
+        flush_instances();  // Flush if we hit the limit
+    }
+    
+    WidgetInstanceData instance;
+    
+    // Transform
+    instance.transform[0] = rect.x;
+    instance.transform[1] = rect.y;
+    instance.transform[2] = rect.width;
+    instance.transform[3] = rect.height;
+    
+    // Color
+    instance.color[0] = color.r;
+    instance.color[1] = color.g;
+    instance.color[2] = color.b;
+    instance.color[3] = color.a;
+    
+    // UV rect (full texture for now - will use atlas later)
+    instance.uv_rect[0] = 0.0f;
+    instance.uv_rect[1] = 0.0f;
+    instance.uv_rect[2] = 1.0f;
+    instance.uv_rect[3] = 1.0f;
+    
+    // Corner radii (same for all corners for now)
+    instance.params[0] = corner_radius;  // top-left
+    instance.params[1] = corner_radius;  // top-right
+    instance.params[2] = corner_radius;  // bottom-right
+    instance.params[3] = corner_radius;  // bottom-left
+    
+    // Border
+    instance.border[0] = border_width;
+    instance.border[1] = border_color.r;
+    instance.border[2] = border_color.g;
+    instance.border[3] = border_color.b;
+    
+    // Extra params for outline
+    instance.extra[0] = outline_width;     // outline width
+    instance.extra[1] = outline_offset;    // outline offset from border
+    instance.extra[2] = outline_color.r;   // outline color R
+    instance.extra[3] = outline_color.g;   // outline color G
+    // Note: outline B and A packed into shader constants or derived
+    
+    
+    instance_data_.push_back(instance);
+}
+
+void CanvasRenderer::flush_instances() {
+    if (instance_data_.empty()) {
+        return;
+    }
+    
+    if (!instance_shader_ || !instance_shader_->is_valid()) {
+        std::cerr << "Instance shader not ready!" << std::endl;
+        return;
+    }
+    
+    // Upload instance data to GPU with cross-platform optimizations
+    glBindBuffer(GL_ARRAY_BUFFER, instance_vbo_);
+    size_t data_size = instance_data_.size() * sizeof(WidgetInstanceData);
+    
+    // Buffer orphaning technique for better performance on all platforms
+    // This avoids GPU stalls by letting the driver manage buffer swapping
+    if (use_buffer_orphaning_ && instance_data_.size() > max_instances_ / 4) {
+        // Orphan the buffer for large updates (>25% of buffer)
+        // This tells the driver we're replacing all data
+        glBufferData(GL_ARRAY_BUFFER, max_instances_ * sizeof(WidgetInstanceData), 
+                     nullptr, GL_DYNAMIC_DRAW);
+    }
+    
+    // Upload the instance data
+    glBufferSubData(GL_ARRAY_BUFFER, 0, data_size, instance_data_.data());
+    
+    // Set up rendering state
+    instance_shader_->use();
+    
+    // Set projection matrix
+    float vp_width = std::max(1.0f, (float)viewport_width_);
+    float vp_height = std::max(1.0f, (float)viewport_height_);
+    float projection[16] = {
+        2.0f / vp_width,  0,                  0, 0,
+        0,               -2.0f / vp_height,    0, 0,
+        0,                0,                  -1, 0,
+        -1,               1,                   0, 1
+    };
+    instance_shader_->set_uniform("u_projection", projection, 16);
+    
+    // Bind texture atlas (or white texture for now)
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, white_texture_);
+    instance_shader_->set_uniform("u_texture_atlas", 0);
+    instance_shader_->set_uniform("u_enable_sdf", 1);  // Enable SDF for proper border rendering
+    
+    // Bind the widget VAO (has static quad + instance attributes)
+    glBindVertexArray(widget_vao_);
+    
+    // Enable blending for proper UI rendering
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    
+    // Draw all instances in ONE call!
+    glDrawElementsInstanced(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr, instance_data_.size());
+    
+    // Update statistics
+    draw_calls_this_frame_++;
+    vertices_this_frame_ += 4 * instance_data_.size();
+    
+    // Clear for next batch
+    instance_data_.clear();
+    
+    glBindVertexArray(0);
+    instance_shader_->unuse();
+}
+
 void CanvasRenderer::render_sorted_batches() {
     if (completed_batches_.empty()) {
         return;
@@ -2131,19 +2308,32 @@ void CanvasRenderer::render_sorted_batches() {
             ui_shader_->set_uniform("u_projection", projection, 16);
             
             // Set default uniforms
-            // CRITICAL: Set u_has_texture to 1 for textured rendering (rectangles use white texture)
-            ui_shader_->set_uniform("u_has_texture", 1);  // Enable textured path
             ui_shader_->set_uniform("u_texture", 0);  // Use texture unit 0
+            ui_shader_->set_uniform("u_is_text", 0);  // Default to non-text
+            ui_shader_->set_uniform("u_use_vertex_color", 1);  // Batched geometry uses vertex colors
             
-            // These are still needed even though we're using textured path
-            ui_shader_->set_uniform("u_widget_rect", ColorRGBA(0, 0, 10000, 10000));  // Large rect disables SDF clipping
+            // We ALWAYS have a texture bound (even if it's just white_texture_)
+            // The shader will sample it and multiply by vertex color
+            ui_shader_->set_uniform("u_has_texture", 1);  // Always sample texture
+            
+            // Not using u_is_simple_rect anymore - will remove from shader
+            
+            // Set default SDF uniforms - all zeros to disable SDF path
+            ui_shader_->set_uniform("u_widget_rect", ColorRGBA(0, 0, 0, 0));  // Zero size disables SDF
             ui_shader_->set_uniform("u_corner_radius", ColorRGBA(0.0f, 0.0f, 0.0f, 0.0f)); 
             ui_shader_->set_uniform("u_border_width", 0.0f);
             ui_shader_->set_uniform("u_border_color", ColorRGBA(0.0f, 0.0f, 0.0f, 0.0f));
-            ui_shader_->set_uniform("u_aa_radius", 1.0f);
+            ui_shader_->set_uniform("u_aa_radius", 0.5f);  // Default anti-aliasing
             ui_shader_->set_uniform("u_global_opacity", global_opacity_);
             
             current_shader = batch.shader_id;
+        }
+        
+        // Set text uniform if this is a text batch
+        if (batch.is_text) {
+            ui_shader_->set_uniform("u_is_text", 1);
+        } else {
+            ui_shader_->set_uniform("u_is_text", 0);
         }
         
         // Only change blend mode if different
@@ -2309,142 +2499,12 @@ void CanvasRenderer::draw_texture(GLuint texture_id, const Rect2D& rect, const C
     vertices_this_frame_ += 4;
 }
 
-void CanvasRenderer::draw_sdf_texture(GLuint sdf_texture_id, const Rect2D& rect, const ColorRGBA& tint,
-                                      float threshold, float smoothness) {
-    // Check if SDF shader is available
-    if (sdf_shader_program_ == 0) {
-        // Fallback to regular texture rendering if SDF shader not available
-        draw_texture(sdf_texture_id, rect, tint);
-        return;
-    }
-    
-    // Save current state
-    GLboolean blend_enabled;
-    glGetBooleanv(GL_BLEND, &blend_enabled);
-    
-    // Enable blending for SDF rendering
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    
-    // Use the SDF shader
-    glUseProgram(sdf_shader_program_);
-    
-    // Set projection matrix
-    float projection[16] = {
-        2.0f / viewport_width_,  0,                        0, 0,
-        0,                      -2.0f / viewport_height_,  0, 0,
-        0,                       0,                       -1, 0,
-        -1,                      1,                        0, 1
-    };
-    glUniformMatrix4fv(sdf_u_projection_, 1, GL_FALSE, projection);
-    
-    // Set SDF parameters
-    glUniform4f(sdf_u_color_, tint.r, tint.g, tint.b, tint.a);
-    glUniform1f(sdf_u_threshold_, threshold);
-    
-    // Dynamic smoothness based on physical pixel size
-    // Use pixelsize factor for proper DPI-aware scaling
-    float logical_size = std::min(rect.width, rect.height);
-    float pixelsize = window_ ? window_->get_pixelsize() : get_content_scale();
-    float physical_size = logical_size * pixelsize;  // Use DPI-adjusted physical pixels
-    float adjusted_smoothness;
-    
-    if (physical_size <= 32.0f) {
-        // Very small icons (16 logical @ 2x = 32 physical): minimal smoothing
-        adjusted_smoothness = 0.001f;
-    } else if (physical_size <= 48.0f) {
-        // Small icons (24 logical @ 2x = 48 physical): very light smoothing
-        adjusted_smoothness = 0.002f;
-    } else if (physical_size <= 64.0f) {
-        // Medium icons (32 logical @ 2x = 64 physical): light smoothing
-        adjusted_smoothness = 0.005f;
-    } else if (physical_size <= 96.0f) {
-        // Large icons (48 logical @ 2x = 96 physical): moderate smoothing
-        adjusted_smoothness = 0.01f;
-    } else {
-        // Very large icons: full smoothing for best anti-aliasing
-        adjusted_smoothness = 0.02f;
-    }
-    
-    glUniform1f(sdf_u_smoothness_, adjusted_smoothness);
-    
-    // Bind the SDF texture
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, sdf_texture_id);
-    glUniform1i(sdf_u_texture_, 0);
-    
-    // Debug: Verify texture is bound
-    GLint bound_texture;
-    glGetIntegerv(GL_TEXTURE_BINDING_2D, &bound_texture);
-    if (bound_texture != sdf_texture_id) {
-        std::cerr << "ERROR: SDF texture not bound! Expected: " << sdf_texture_id 
-                  << ", Got: " << bound_texture << std::endl;
-    }
-    
-    // Setup vertex data
-    struct TexturedVertex {
-        float x, y;
-        float u, v;
-        float r, g, b, a;
-    };
-    
-    TexturedVertex vertices[4] = {
-        // Bottom-left
-        {rect.x, rect.y + rect.height, 
-         0.0f, 1.0f,
-         1.0f, 1.0f, 1.0f, 1.0f},
-        // Bottom-right
-        {rect.x + rect.width, rect.y + rect.height,
-         1.0f, 1.0f,
-         1.0f, 1.0f, 1.0f, 1.0f},
-        // Top-right
-        {rect.x + rect.width, rect.y,
-         1.0f, 0.0f,
-         1.0f, 1.0f, 1.0f, 1.0f},
-        // Top-left
-        {rect.x, rect.y,
-         0.0f, 0.0f,
-         1.0f, 1.0f, 1.0f, 1.0f}
-    };
-    
-    GLuint indices[6] = {0, 1, 2, 2, 3, 0};
-    
-    // Use VAO for rendering
-    glBindVertexArray(ui_vao_);
-    
-    // Upload vertex data
-    glBindBuffer(GL_ARRAY_BUFFER, ui_vbo_);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_DYNAMIC_DRAW);
-    
-    // Setup vertex attributes for SDF shader
-    // Position attribute (location 0)
-    glEnableVertexAttribArray(0);
-    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(TexturedVertex), (void*)0);
-    
-    // Texture coord attribute (location 1)
-    glEnableVertexAttribArray(1);
-    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(TexturedVertex), (void*)(2 * sizeof(float)));
-    
-    // Upload index data
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ui_ebo_);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_DYNAMIC_DRAW);
-    
-    // Draw
-    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
-    
-    // Cleanup
-    glUseProgram(0);
-    glBindTexture(GL_TEXTURE_2D, 0);
-    glBindVertexArray(0);
-    
-    // Restore blend state
-    if (!blend_enabled) {
-        glDisable(GL_BLEND);
-    }
-}
+// SDF rendering has been integrated into the unified batched rendering system
+// Icons and SDF textures should be rendered through draw_texture() which uses the UI shader
 
 void CanvasRenderer::setup_shaders() {
     create_ui_shader();
+    create_instance_shader();
     create_text_shader();
     create_sdf_shader();
     create_blur_shader();
@@ -2487,6 +2547,103 @@ void CanvasRenderer::setup_buffers() {
     
     
     glBindVertexArray(0);
+    
+    // Create static widget geometry (industry standard approach)
+    // This is a unit quad that will be transformed via uniforms
+    glGenVertexArrays(1, &widget_vao_);
+    glBindVertexArray(widget_vao_);
+    
+    glGenBuffers(1, &widget_vbo_);
+    glBindBuffer(GL_ARRAY_BUFFER, widget_vbo_);
+    
+    // Create a unit quad (0,0 to 1,1) - will be transformed by uniforms
+    float widget_vertices[] = {
+        // pos     uv
+        0.0f, 0.0f, 0.0f, 0.0f,  // bottom-left
+        1.0f, 0.0f, 1.0f, 0.0f,  // bottom-right
+        1.0f, 1.0f, 1.0f, 1.0f,  // top-right
+        0.0f, 1.0f, 0.0f, 1.0f   // top-left
+    };
+    glBufferData(GL_ARRAY_BUFFER, sizeof(widget_vertices), widget_vertices, GL_STATIC_DRAW);
+    
+    glGenBuffers(1, &widget_ebo_);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, widget_ebo_);
+    uint32_t widget_indices[] = {0, 1, 2, 0, 2, 3};
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(widget_indices), widget_indices, GL_STATIC_DRAW);
+    
+    // Setup vertex attributes for widget
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
+    
+    // Create instance buffer (using traditional approach for macOS compatibility)
+    glGenBuffers(1, &instance_vbo_);
+    glBindBuffer(GL_ARRAY_BUFFER, instance_vbo_);
+    
+    // Cross-platform buffer initialization
+    size_t instance_buffer_size = max_instances_ * sizeof(WidgetInstanceData);
+    
+    // Check OpenGL version for advanced features
+    const GLubyte* version_str = glGetString(GL_VERSION);
+    int gl_major = 4, gl_minor = 1;
+    if (version_str) {
+        sscanf((const char*)version_str, "%d.%d", &gl_major, &gl_minor);
+    }
+    
+    // Determine best buffer strategy based on platform capabilities
+    bool supports_persistent_mapping = (gl_major > 4 || (gl_major == 4 && gl_minor >= 4));
+    bool supports_buffer_storage = supports_persistent_mapping;  // Same requirement
+    
+    if (supports_buffer_storage && false) {  // Disabled for now for stability
+        // Modern path: Immutable storage (better driver optimization)
+        // We don't use persistent mapping to avoid complexity
+        std::cout << "Using immutable buffer storage (OpenGL 4.4+)" << std::endl;
+        use_buffer_orphaning_ = false;  // Not needed with immutable storage
+    } else {
+        // Compatible path: Traditional buffer with orphaning
+        std::cout << "Using traditional buffer with orphaning (OpenGL 4.1+)" << std::endl;
+        glBufferData(GL_ARRAY_BUFFER, instance_buffer_size, nullptr, GL_DYNAMIC_DRAW);
+        use_buffer_orphaning_ = true;
+    }
+    
+    // Pre-allocate instance data vector for performance
+    instance_data_.reserve(max_instances_);
+    
+    // Setup instance attributes (using locations 3-8)
+    size_t stride = sizeof(WidgetInstanceData);
+    
+    // Transform (location 3)
+    glEnableVertexAttribArray(3);
+    glVertexAttribPointer(3, 4, GL_FLOAT, GL_FALSE, stride, (void*)offsetof(WidgetInstanceData, transform));
+    glVertexAttribDivisor(3, 1);  // One per instance
+    
+    // Color (location 4)
+    glEnableVertexAttribArray(4);
+    glVertexAttribPointer(4, 4, GL_FLOAT, GL_FALSE, stride, (void*)offsetof(WidgetInstanceData, color));
+    glVertexAttribDivisor(4, 1);
+    
+    // UV rect (location 5)
+    glEnableVertexAttribArray(5);
+    glVertexAttribPointer(5, 4, GL_FLOAT, GL_FALSE, stride, (void*)offsetof(WidgetInstanceData, uv_rect));
+    glVertexAttribDivisor(5, 1);
+    
+    // Params/corner radius (location 6)
+    glEnableVertexAttribArray(6);
+    glVertexAttribPointer(6, 4, GL_FLOAT, GL_FALSE, stride, (void*)offsetof(WidgetInstanceData, params));
+    glVertexAttribDivisor(6, 1);
+    
+    // Border (location 7)
+    glEnableVertexAttribArray(7);
+    glVertexAttribPointer(7, 4, GL_FLOAT, GL_FALSE, stride, (void*)offsetof(WidgetInstanceData, border));
+    glVertexAttribDivisor(7, 1);
+    
+    // Extra params (location 8)
+    glEnableVertexAttribArray(8);
+    glVertexAttribPointer(8, 4, GL_FLOAT, GL_FALSE, stride, (void*)offsetof(WidgetInstanceData, extra));
+    glVertexAttribDivisor(8, 1);
+    
+    glBindVertexArray(0);
 }
 
 void CanvasRenderer::setup_default_textures() {
@@ -2519,14 +2676,18 @@ void CanvasRenderer::setup_default_textures() {
 }
 
 void CanvasRenderer::create_ui_shader() {
+    // This shader supports both dynamic batched geometry (with vertex colors)
+    // and static widget geometry (with uniform colors)
     std::string vertex_source = R"(
 #version 330 core
 
 layout(location = 0) in vec2 a_position;
 layout(location = 1) in vec2 a_texcoord;
-layout(location = 2) in vec4 a_color;
+layout(location = 2) in vec4 a_color;  // Optional - will be vec4(0) for static geometry
 
 uniform mat4 u_projection;
+uniform vec4 u_widget_color;  // Widget color as uniform
+uniform int u_use_vertex_color;  // 1 = use vertex color, 0 = use uniform color
 
 out vec2 v_texcoord;
 out vec4 v_color;
@@ -2535,7 +2696,7 @@ out vec2 v_position;
 void main() {
     gl_Position = u_projection * vec4(a_position, 0.0, 1.0);
     v_texcoord = a_texcoord;
-    v_color = a_color;
+    v_color = (u_use_vertex_color == 1) ? a_color : u_widget_color;
     v_position = a_position;
 }
 )";
@@ -2549,6 +2710,7 @@ in vec2 v_position;
 
 uniform sampler2D u_texture;
 uniform int u_has_texture;
+uniform int u_is_text;  // 1 for text glyphs, 0 for regular textures
 uniform vec4 u_widget_rect;
 uniform vec4 u_corner_radius;
 uniform float u_border_width;
@@ -2565,45 +2727,66 @@ float sdf_rounded_rect(vec2 p, vec2 b, vec4 r) {
 }
 
 void main() {
-    // Simple path for textured rendering
-    if (u_has_texture == 1) {
-        vec4 tex_color = texture(u_texture, v_texcoord);
-        fragColor = tex_color * v_color;  // Tint the texture with vertex color
+    // Get base color - either from texture or vertex color
+    vec4 base_color;
+    
+    if (u_is_text == 1) {
+        // Text rendering - use texture's red channel as alpha
+        // Font textures are stored as GL_RED format
+        vec4 tex_sample = texture(u_texture, v_texcoord);
+        float glyph_alpha = tex_sample.r;
+        
+        // Debug: Check what GL_RED texture returns
+        // If green/blue are also set to red value, we have a driver issue
+        // In that case, the text would appear red/yellow/white instead of using vertex color
+        // Fix: explicitly use only the red channel for alpha
+        base_color = vec4(v_color.rgb, v_color.a * glyph_alpha);
+    } else if (u_has_texture == 1) {
+        // Regular texture - modulate with vertex color
+        // This handles both real textures AND the white texture for solid colors
+        base_color = texture(u_texture, v_texcoord) * v_color;
+    } else {
+        // Fallback - should not happen since we always have a texture
+        base_color = v_color;
+    }
+    
+    // Check if we need SDF processing (non-zero widget rect and has corners or border)
+    bool needs_sdf = (u_widget_rect.z > 0.001 && u_widget_rect.w > 0.001) && 
+                     (length(u_corner_radius) > 0.001 || u_border_width > 0.001);
+    
+    if (!needs_sdf) {
+        // Simple rect without SDF - output base color directly
+        fragColor = base_color;
         return;
     }
     
-    // Fast path for simple rectangles (no rounded corners, no border)
-    if (u_corner_radius == vec4(0.0) && u_border_width == 0.0) {
-        fragColor = v_color;
-        return;
-    }
-    
-    // SDF path for rounded rectangles and borders
+    // SDF-based rendering for rounded corners and borders
     vec2 widget_size = u_widget_rect.zw;
     vec2 widget_center = widget_size * 0.5;
     vec2 local_pos = v_position - u_widget_rect.xy;
     vec2 sdf_pos = local_pos - widget_center;
     
+    // Calculate signed distance
     float sdf = sdf_rounded_rect(sdf_pos, widget_size * 0.5, u_corner_radius);
     
-    float inner_sdf = sdf + u_border_width;
-    float outer_sdf = sdf;
+    // Calculate masks for fill and border
+    float aa = max(0.5, u_aa_radius);  // Minimum 0.5 pixel anti-aliasing
     
-    float inner_alpha = 1.0 - smoothstep(-u_aa_radius, u_aa_radius, inner_sdf);
-    float outer_alpha = 1.0 - smoothstep(-u_aa_radius, u_aa_radius, outer_sdf);
-    float border_alpha = outer_alpha - inner_alpha;
+    float fill_sdf = sdf + u_border_width;
+    float fill_mask = 1.0 - smoothstep(-aa, aa, fill_sdf);
     
-    vec4 fill_color = v_color;
-    vec4 border_color = u_border_color;
+    float border_sdf = sdf;
+    float border_mask = 1.0 - smoothstep(-aa, aa, border_sdf);
     
-    vec4 final_color = mix(fill_color, border_color, border_alpha);
-    final_color.a *= outer_alpha;
-    
-    if (final_color.a < 0.01) {
-        discard;
+    // Composite the final color
+    if (u_border_width > 0.001) {
+        // Has border - blend fill and border
+        float border_only = border_mask - fill_mask;
+        fragColor = base_color * fill_mask + u_border_color * border_only;
+    } else {
+        // No border - just apply the mask
+        fragColor = base_color * border_mask;
     }
-    
-    fragColor = final_color;
 }
 )";
 
@@ -2612,6 +2795,164 @@ void main() {
         std::cerr << "CRITICAL ERROR: Failed to create UI shader!" << std::endl;
     } else {
         }
+}
+
+void CanvasRenderer::create_instance_shader() {
+    std::string vertex_source = R"(
+#version 330 core
+
+// Per-vertex attributes (shared by all instances)
+layout(location = 0) in vec2 a_position;  // Unit quad position
+layout(location = 1) in vec2 a_texcoord;  // Unit quad UV
+
+// Per-instance attributes
+layout(location = 3) in vec4 a_transform;     // x, y, width, height
+layout(location = 4) in vec4 a_color;         // RGBA
+layout(location = 5) in vec4 a_uv_rect;       // u0, v0, u1, v1 for texture atlas
+layout(location = 6) in vec4 a_params;        // corner radii (tl, tr, br, bl)
+layout(location = 7) in vec4 a_border;        // width, r, g, b
+layout(location = 8) in vec4 a_extra;         // type, alpha, unused, unused
+
+uniform mat4 u_projection;
+
+out vec2 v_position;      // World position for SDF
+out vec2 v_texcoord;      // Texture coordinates
+out vec4 v_color;         // Instance color
+out vec4 v_params;        // Pass params to fragment
+out vec4 v_border;        // Pass border to fragment
+out vec4 v_outline;       // Pass outline to fragment
+out vec2 v_widget_size;   // Widget dimensions for SDF
+out vec2 v_widget_pos;    // Widget position for SDF
+
+void main() {
+    // Transform unit quad to world space
+    vec2 world_pos = a_position * a_transform.zw + a_transform.xy;
+    gl_Position = u_projection * vec4(world_pos, 0.0, 1.0);
+    
+    // Interpolate texture coordinates for atlas
+    v_texcoord = mix(a_uv_rect.xy, a_uv_rect.zw, a_texcoord);
+    
+    // Pass through instance data
+    v_position = world_pos;
+    v_color = a_color;
+    v_params = a_params;
+    v_border = a_border;
+    v_outline = a_extra;  // Outline data is in extra
+    v_widget_size = a_transform.zw;
+    v_widget_pos = a_transform.xy;
+}
+)";
+
+    std::string fragment_source = R"(
+#version 330 core
+
+in vec2 v_position;
+in vec2 v_texcoord;
+in vec4 v_color;
+in vec4 v_params;      // corner radii
+in vec4 v_border;      // width, r, g, b
+in vec4 v_outline;     // width, offset, r, g (outline data)
+in vec2 v_widget_size;
+in vec2 v_widget_pos;
+
+uniform sampler2D u_texture_atlas;
+uniform int u_enable_sdf;
+
+out vec4 fragColor;
+
+float sdf_rounded_rect(vec2 p, vec2 b, vec4 r) {
+    r.xy = (p.x > 0.0) ? r.xy : r.zw;
+    r.x  = (p.y > 0.0) ? r.x  : r.y;
+    vec2 q = abs(p) - b + r.x;
+    return min(max(q.x, q.y), 0.0) + length(max(q, 0.0)) - r.x;
+}
+
+void main() {
+    // Sample texture atlas
+    vec4 tex_color = texture(u_texture_atlas, v_texcoord);
+    vec4 base_color = tex_color * v_color;
+    
+    // Only apply SDF if we actually have rounded corners or borders
+    // Check if any corner radius is non-zero
+    bool has_rounded_corners = (v_params.x > 0.001 || v_params.y > 0.001 || 
+                                v_params.z > 0.001 || v_params.w > 0.001);
+    bool has_border = v_border.x > 0.001;
+    
+    // Check for outline
+    bool has_outline = v_outline.x > 0.001;
+    
+    if (u_enable_sdf == 1 && (has_rounded_corners || has_border || has_outline)) {
+        vec2 center = v_widget_pos + v_widget_size * 0.5;
+        vec2 half_size = v_widget_size * 0.5;
+        vec2 local_pos = v_position - center;
+        
+        float sdf = sdf_rounded_rect(local_pos, half_size, v_params);
+        
+        // Anti-aliasing width
+        float aa = 0.5;
+        
+        // Calculate all three masks
+        float outline_width = v_outline.x;
+        float outline_offset = v_outline.y;  // Pre-calculated position based on alignment
+        float border_width = v_border.x;
+        
+        // SDF increases inward (positive = inside shape)
+        // Border is at the widget boundary (sdf = 0)
+        float border_outer_sdf = sdf;
+        float border_inner_sdf = sdf + border_width;
+        
+        // Fill is innermost
+        float fill_sdf = border_inner_sdf;
+        
+        // Outline position depends on alignment (encoded in offset)
+        // offset < 0: outline is outside (further from center)
+        // offset = 0: outline is on edge
+        // offset > 0: outline is inside (closer to center)
+        float outline_inner_sdf = sdf + outline_offset;
+        float outline_outer_sdf = outline_inner_sdf - outline_width;
+        
+        // Calculate masks - use exclusive regions to avoid overlap
+        float fill_mask = 1.0 - smoothstep(-aa, aa, fill_sdf);
+        
+        // Border is only where we're inside border outer but outside fill
+        float border_mask = has_border ? 
+            (1.0 - smoothstep(-aa, aa, border_outer_sdf)) - fill_mask : 0.0;
+        
+        // Outline is only where we're inside outline outer but outside border outer
+        float widget_mask = 1.0 - smoothstep(-aa, aa, border_outer_sdf);
+        float outline_mask = has_outline ? 
+            (1.0 - smoothstep(-aa, aa, outline_outer_sdf)) - widget_mask : 0.0;
+        
+        // Composite using exclusive masks (no overlap)
+        vec4 result = vec4(0.0);
+        
+        // Each layer adds its contribution without overlap
+        if (has_outline) {
+            vec3 outline_color = vec3(v_outline.z, v_outline.w, 0.5); // RG from outline, B hardcoded for now
+            result += vec4(outline_color, 1.0) * outline_mask;
+        }
+        
+        if (has_border) {
+            vec3 border_color = v_border.yzw;
+            result += vec4(border_color, 1.0) * border_mask;
+        }
+        
+        // Fill layer
+        result += base_color * fill_mask;
+        
+        // Result already has proper alpha from exclusive masks
+        fragColor = result;
+    } else {
+        // Simple rect - no SDF, no anti-aliasing
+        fragColor = base_color;
+    }
+}
+)";
+
+    instance_shader_ = std::make_unique<ShaderProgram>();
+    if (!instance_shader_->load_from_strings(vertex_source, fragment_source)) {
+        std::cerr << "Failed to create instance shader!" << std::endl;
+    }
 }
 
 void CanvasRenderer::create_text_shader() {
@@ -3156,7 +3497,7 @@ void CanvasRenderer::stroke_path(const ColorRGBA& color, float width) {
                 
             case PathPoint::LineTo:
                 if (has_current) {
-                    draw_line(current_pos, Point2D(point.x, point.y), color, width);
+                    draw_line_batched(current_pos, Point2D(point.x, point.y), color, width);
                     current_pos = Point2D(point.x, point.y);
                 }
                 break;
@@ -3185,7 +3526,7 @@ void CanvasRenderer::stroke_path(const ColorRGBA& color, float width) {
                                  t3 * point.y;
                         
                         Point2D next(x, y);
-                        draw_line(prev, next, color, width);
+                        draw_line_batched(prev, next, color, width);
                         prev = next;
                     }
                     
@@ -3259,9 +3600,9 @@ void CanvasRenderer::fill_path(const ColorRGBA& color) {
             // Draw triangle from first vertex to i-1 and i
             // This would be better done with actual triangle rendering
             // For now, approximate with very thin rectangles
-            draw_line(vertices[0], vertices[i-1], color, 1);
-            draw_line(vertices[i-1], vertices[i], color, 1);
-            draw_line(vertices[i], vertices[0], color, 1);
+            draw_line_batched(vertices[0], vertices[i-1], color, 1);
+            draw_line_batched(vertices[i-1], vertices[i], color, 1);
+            draw_line_batched(vertices[i], vertices[0], color, 1);
         }
     }
     

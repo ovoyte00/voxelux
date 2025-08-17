@@ -8,6 +8,7 @@
 #include "canvas_ui/canvas_renderer.h"
 #include "canvas_ui/scaled_theme.h"
 #include "canvas_ui/font_system.h"
+#include <typeinfo>
 #include "canvas_ui/render_block.h"
 #include <algorithm>
 #include <numeric>
@@ -229,6 +230,153 @@ Rect2D StyledWidget::get_padding_bounds() const {
     );
 }
 
+// Calculate intrinsic sizes (Pass 1 - bottom-up)
+StyledWidget::IntrinsicSizes StyledWidget::calculate_intrinsic_sizes() {
+    IntrinsicSizes sizes;
+    
+    // Start with style-defined sizes if available
+    if (computed_style_.width > 0) {
+        sizes.min_width = sizes.preferred_width = sizes.max_width = computed_style_.width;
+    }
+    if (computed_style_.min_width > 0) {
+        sizes.min_width = computed_style_.min_width;
+    }
+    if (computed_style_.max_width < std::numeric_limits<float>::max()) {
+        sizes.max_width = computed_style_.max_width;
+    }
+    
+    if (computed_style_.height > 0) {
+        sizes.min_height = sizes.preferred_height = sizes.max_height = computed_style_.height;
+    }
+    if (computed_style_.min_height > 0) {
+        sizes.min_height = computed_style_.min_height;
+    }
+    if (computed_style_.max_height < std::numeric_limits<float>::max()) {
+        sizes.max_height = computed_style_.max_height;
+    }
+    
+    // If no explicit size, calculate based on children
+    if (sizes.preferred_width == 0 || sizes.preferred_height == 0) {
+        // Get children's intrinsic sizes first
+        std::vector<IntrinsicSizes> child_sizes;
+        for (const auto& child : children_) {
+            if (!child->is_visible()) continue;
+            child_sizes.push_back(child->calculate_intrinsic_sizes());
+        }
+        
+        // Aggregate based on layout type
+        if (computed_style_.display == WidgetStyle::Display::Flex) {
+            bool is_row = (computed_style_.flex_direction == WidgetStyle::FlexDirection::Row ||
+                          computed_style_.flex_direction == WidgetStyle::FlexDirection::RowReverse);
+            
+            float total_width = 0, total_height = 0;
+            float max_width = 0, max_height = 0;
+            
+            for (const auto& child_size : child_sizes) {
+                if (is_row) {
+                    total_width += child_size.preferred_width;
+                    max_height = std::max(max_height, child_size.preferred_height);
+                } else {
+                    total_height += child_size.preferred_height;
+                    max_width = std::max(max_width, child_size.preferred_width);
+                }
+            }
+            
+            // Add gaps
+            if (child_sizes.size() > 1) {
+                float gap = computed_style_.gap_pixels;
+                if (is_row) {
+                    total_width += gap * (child_sizes.size() - 1);
+                } else {
+                    total_height += gap * (child_sizes.size() - 1);
+                }
+            }
+            
+            if (sizes.preferred_width == 0) {
+                sizes.preferred_width = is_row ? total_width : max_width;
+            }
+            if (sizes.preferred_height == 0) {
+                sizes.preferred_height = is_row ? max_height : total_height;
+            }
+        } else {
+            // Block/other: use maximum dimensions
+            for (const auto& child_size : child_sizes) {
+                sizes.preferred_width = std::max(sizes.preferred_width, child_size.preferred_width);
+                sizes.preferred_height = std::max(sizes.preferred_height, child_size.preferred_height);
+            }
+        }
+    }
+    
+    // Add padding
+    sizes.min_width += computed_style_.padding_left + computed_style_.padding_right;
+    sizes.preferred_width += computed_style_.padding_left + computed_style_.padding_right;
+    sizes.min_height += computed_style_.padding_top + computed_style_.padding_bottom;
+    sizes.preferred_height += computed_style_.padding_top + computed_style_.padding_bottom;
+    
+    // Add border
+    float border_width = computed_style_.border_width_left + computed_style_.border_width_right;
+    float border_height = computed_style_.border_width_top + computed_style_.border_width_bottom;
+    sizes.min_width += border_width;
+    sizes.preferred_width += border_width;
+    sizes.min_height += border_height;
+    sizes.preferred_height += border_height;
+    
+    // Add margins (they affect the space this widget takes in its parent)
+    float margin_width = computed_style_.margin_left + computed_style_.margin_right;
+    float margin_height = computed_style_.margin_top + computed_style_.margin_bottom;
+    sizes.min_width += margin_width;
+    sizes.preferred_width += margin_width;
+    sizes.min_height += margin_height;
+    sizes.preferred_height += margin_height;
+    
+    return sizes;
+}
+
+// Resolve actual sizes (Pass 2 - top-down)
+void StyledWidget::resolve_sizes(float available_width, float available_height) {
+    // Use intrinsic sizes as a starting point
+    IntrinsicSizes intrinsic = calculate_intrinsic_sizes();
+    
+    // Resolve width
+    float resolved_width = bounds_.width;
+    if (computed_style_.width_unit == WidgetStyle::ComputedStyle::AUTO) {
+        resolved_width = intrinsic.preferred_width;
+    } else if (computed_style_.width_unit == WidgetStyle::ComputedStyle::PERCENT) {
+        resolved_width = available_width * (computed_style_.width / 100.0f);
+    } else if (computed_style_.width_unit == WidgetStyle::ComputedStyle::PIXELS && bounds_.width == 0) {
+        // Only use computed width if bounds haven't been set by parent
+        resolved_width = computed_style_.width;
+    }
+    
+    // Apply min/max constraints
+    resolved_width = std::max(intrinsic.min_width, std::min(intrinsic.max_width, resolved_width));
+    
+    // Resolve height
+    float resolved_height = bounds_.height;
+    if (computed_style_.height_unit == WidgetStyle::ComputedStyle::AUTO) {
+        resolved_height = intrinsic.preferred_height;
+    } else if (computed_style_.height_unit == WidgetStyle::ComputedStyle::PERCENT) {
+        resolved_height = available_height * (computed_style_.height / 100.0f);
+    } else if (computed_style_.height_unit == WidgetStyle::ComputedStyle::PIXELS && bounds_.height == 0) {
+        // Only use computed height if bounds haven't been set by parent
+        resolved_height = computed_style_.height;
+    }
+    
+    // Apply min/max constraints
+    resolved_height = std::max(intrinsic.min_height, std::min(intrinsic.max_height, resolved_height));
+    
+    // Update bounds with resolved sizes (preserve position!)
+    // Only update size, not position
+    bounds_.width = resolved_width;
+    bounds_.height = resolved_height;
+}
+
+// Position children (Pass 3)
+void StyledWidget::position_children() {
+    // This calls the appropriate layout algorithm
+    layout_children();
+}
+
 Point2D StyledWidget::get_content_size() const {
     // Default: calculate based on children
     if (children_.empty()) {
@@ -244,13 +392,27 @@ Point2D StyledWidget::get_content_size() const {
         max_y = std::max(max_y, child_bounds.y + child_bounds.height);
     }
     
+    // Debug for dock containers
+    if (get_widget_type() == "dock-container" && max_x == 0 && max_y == 0 && !children_.empty()) {
+        std::cout << "WARNING: DockContainer get_content_size returning 0,0 with " 
+                  << children_.size() << " children" << std::endl;
+        for (const auto& child : children_) {
+            if (child->is_visible()) {
+                const auto& bounds = child->get_bounds();
+                std::cout << "  Child " << child->get_widget_type() << " bounds: " 
+                         << bounds.x << "," << bounds.y << " " 
+                         << bounds.width << "x" << bounds.height << std::endl;
+            }
+        }
+    }
+    
     return Point2D(max_x, max_y);
 }
 
 void StyledWidget::render(CanvasRenderer* renderer) {
     if (!visible_) return;
     
-    // Duplicate rendering issue fixed - removed redundant build_menus() call
+    // Text rendering is now batched with UI rendering
     
     // Check visibility property
     if (computed_style_.visibility == WidgetStyle::Visibility::Hidden ||
@@ -329,38 +491,65 @@ void StyledWidget::render(CanvasRenderer* renderer) {
 void StyledWidget::render_background(CanvasRenderer* renderer) {
     Rect2D bg_bounds = get_padding_bounds();
     
+    // SINGLE-PASS RENDERING: Background, border, and outline together
     
-    // Render background layers in order (first layer is bottom-most)
-    // 1. Background color (always bottom)
+    // Collect all rendering properties
+    float border_width = std::max({computed_style_.border_width_top, computed_style_.border_width_right,
+                                   computed_style_.border_width_bottom, computed_style_.border_width_left});
+    ColorRGBA border_color = computed_style_.border_color;
     
-    // Debug: Check what background is being rendered for text widgets
-    if (get_widget_type() == "text" && computed_style_.background_color.a > 0) {
-        std::cout << "TEXT WIDGET HAS BACKGROUND: " << id_ 
-                  << " color=(" << computed_style_.background_color.r << ", " 
-                  << computed_style_.background_color.g << ", "
-                  << computed_style_.background_color.b << ", "
-                  << computed_style_.background_color.a << ")" << std::endl;
+    // Outline properties
+    float outline_width = 0.0f;
+    float outline_offset = 0.0f;
+    ColorRGBA outline_color(0, 0, 0, 0);
+    
+    if (computed_style_.outline.style != WidgetStyle::OutlineStyle::None && 
+        computed_style_.outline.width.value > 0) {
+        ScaledTheme theme = renderer->get_scaled_theme();
+        outline_width = computed_style_.outline.width.resolve(theme);
+        
+        // Calculate offset based on alignment
+        float base_offset = computed_style_.outline.offset.resolve(theme);
+        
+        // Adjust offset based on alignment
+        // The offset tells the shader where to position the outline relative to the border
+        switch (computed_style_.outline.alignment) {
+            case WidgetStyle::OutlineStyle::Inside:
+                // Outline is inside the widget boundary
+                // Positive offset moves inward (toward fill)
+                outline_offset = base_offset + border_width;
+                break;
+            case WidgetStyle::OutlineStyle::Center:
+                // Outline is centered on the widget boundary
+                outline_offset = base_offset + border_width * 0.5f - outline_width * 0.5f;
+                break;
+            case WidgetStyle::OutlineStyle::Outside:
+            default:
+                // Outline is outside the widget boundary
+                // Negative offset moves outward
+                outline_offset = base_offset - outline_width;
+                break;
+        }
+        
+        outline_color = computed_style_.outline.color.resolve(theme);
     }
     
-    if (computed_style_.background_color.a > 0.001f) {  // Use epsilon to avoid floating point issues
-        // Handle border radius
-        if (computed_style_.border_radius_tl > 0 || computed_style_.border_radius_tr > 0 ||
-            computed_style_.border_radius_bl > 0 || computed_style_.border_radius_br > 0) {
-            // Use varied corner radius rendering
-            if (get_widget_type() == "button" && is_hovered()) {
-                std::cout << "BUTTON using SDF path (rounded)" << std::endl;
-            }
-            renderer->draw_rounded_rect_varied(bg_bounds, computed_style_.background_color,
-                                              computed_style_.border_radius_tl,
-                                              computed_style_.border_radius_tr,
-                                              computed_style_.border_radius_br,
-                                              computed_style_.border_radius_bl);
-        } else {
-            if (get_widget_type() == "button" && is_hovered()) {
-                std::cout << "BUTTON using SIMPLE RECT path" << std::endl;
-            }
-            renderer->draw_rect(bg_bounds, computed_style_.background_color);
-        }
+    
+    // Only render if we have something to draw
+    bool should_render = computed_style_.background_color.a > 0.001f || border_width > 0.001f || outline_width > 0.001f;
+    
+    
+    if (should_render) {
+        // Get the actual background color
+        ColorRGBA bg_color = computed_style_.background_color;
+        
+        // Use the highest corner radius value for now (proper varied radius support coming)
+        float corner_radius = std::max({computed_style_.border_radius_tl, computed_style_.border_radius_tr,
+                                        computed_style_.border_radius_br, computed_style_.border_radius_bl});
+        
+        // SINGLE draw call for background, border, AND outline!
+        renderer->add_widget_instance(bg_bounds, bg_color, corner_radius, border_width, border_color,
+                                     outline_width, outline_offset, outline_color);
     }
     
     // 2. Background images (if any)
@@ -497,6 +686,10 @@ void StyledWidget::render_gradient(CanvasRenderer* renderer, const Rect2D& bound
 }
 
 void StyledWidget::render_border(CanvasRenderer* renderer) {
+    // BORDER IS NOW RENDERED IN render_background() for single-pass efficiency
+    // This prevents overlapping geometry and double blending issues
+    return;
+    
     if (computed_style_.border_width_top > 0 || computed_style_.border_width_right > 0 ||
         computed_style_.border_width_bottom > 0 || computed_style_.border_width_left > 0) {
         
@@ -539,8 +732,8 @@ void StyledWidget::render_border(CanvasRenderer* renderer) {
                 
                 renderer->pop_clip();
             } else if (computed_style_.border_color.a > 0) {
-                // Solid color border
-                renderer->draw_rect_outline(bounds_, computed_style_.border_color, border_width);
+                // Solid color border - NOW HANDLED IN render_background() to avoid overlapping draws
+                // renderer->draw_rect_outline(bounds_, computed_style_.border_color, border_width);
             }
         }
     }
@@ -552,15 +745,8 @@ void StyledWidget::render_content(CanvasRenderer* renderer) {
 }
 
 void StyledWidget::render_children(CanvasRenderer* renderer) {
-    // Debug: Track how many times children are rendered
-    static int children_render_count = 0;
+    // Debug output disabled
     if (!children_.empty()) {
-        children_render_count++;
-        if (get_widget_type() == "text" || (children_render_count % 100 == 1)) {
-            std::cout << "RENDER_CHILDREN #" << children_render_count 
-                      << " for " << get_widget_type() << " " << id_ 
-                      << " with " << children_.size() << " children" << std::endl;
-        }
     }
     
     for (auto& child : children_) {
@@ -586,6 +772,8 @@ void StyledWidget::render_effects(CanvasRenderer* renderer) {
 }
 
 void StyledWidget::render_outline(CanvasRenderer* renderer) {
+    // OUTLINE IS NOW RENDERED IN render_background() for single-pass efficiency
+    return;
     if (computed_style_.outline.style != WidgetStyle::OutlineStyle::None && 
         computed_style_.outline.width.value > 0) {
         
@@ -774,6 +962,7 @@ bool StyledWidget::handle_event(const InputEvent& event) {
     // Check if event is within bounds
     bool in_bounds = bounds_.contains(event.mouse_pos);
     
+    
     // Update hover state - ALWAYS update, not just when state changes
     // This ensures widgets lose hover when mouse moves away quickly
     if (event.type == EventType::MOUSE_MOVE) {
@@ -782,20 +971,12 @@ bool StyledWidget::handle_event(const InputEvent& event) {
         
         // If mouse is not in bounds, always clear hover
         if (!in_bounds && is_hovered()) {
-            if (get_widget_type() == "button") {
-                std::cout << "BUTTON MOUSE EXIT: " << id_ << std::endl;
-            }
             set_hovered(false);
             apply_state_style();
             invalidate_style();
         }
         // If mouse is in bounds, set hover
         else if (in_bounds && !is_hovered()) {
-            if (get_widget_type() == "button") {
-                std::cout << "BUTTON MOUSE ENTER: " << id_ << " bounds=" 
-                          << bounds_.x << "," << bounds_.y << "," << bounds_.width << "," << bounds_.height 
-                          << " mouse=" << event.mouse_pos.x << "," << event.mouse_pos.y << std::endl;
-            }
             set_hovered(true);
             apply_state_style();
             invalidate_style();
@@ -854,20 +1035,39 @@ void StyledWidget::perform_layout() {
         return;
     }
     
-    // Ensure all children have computed styles before layout
-    // This is necessary for proper flex calculations
-    for (auto& child : children_) {
-        if (child->needs_style_computation_) {
-            // Children will get their styles computed during render
-            // For now we can't proceed with layout
-            return;
+    // Debug: Check computed values for menu buttons
+    if (get_widget_type() == "button" && parent_ && parent_->get_widget_type() == "menubar") {
+        std::cout << "MenuButton layout: computed height=" << computed_style_.height 
+                  << " unit=" << computed_style_.height_unit
+                  << " current bounds=" << bounds_.width << "x" << bounds_.height << std::endl;
+    }
+    
+    // Multi-pass layout system:
+    // Pass 1: Calculate intrinsic sizes (bottom-up)
+    IntrinsicSizes intrinsic = calculate_intrinsic_sizes();
+    
+    // Pass 2: Resolve sizes based on constraints
+    // If we're the root or have explicit sizes, use those
+    // Otherwise use parent's content bounds
+    float available_width = bounds_.width;
+    float available_height = bounds_.height;
+    
+    if (parent_) {
+        Rect2D parent_content = parent_->get_content_bounds();
+        if (computed_style_.width_unit == WidgetStyle::ComputedStyle::AUTO) {
+            available_width = parent_content.width;
+        }
+        if (computed_style_.height_unit == WidgetStyle::ComputedStyle::AUTO) {
+            available_height = parent_content.height;
         }
     }
     
-    // Layout children based on display type
-    layout_children();
+    resolve_sizes(available_width, available_height);
     
-    // Recursively layout children
+    // Pass 3: Position children
+    position_children();
+    
+    // Recursively layout children with multi-pass
     for (auto& child : children_) {
         child->perform_layout();
     }
@@ -1321,6 +1521,7 @@ void StyledWidget::layout_flex() {
         
         // Calculate actual widget dimensions based on display type
         float content_width, content_height;
+        
         
         // In a flex container, all direct children become flex items
         // Their display type affects their intrinsic sizing but they all participate in flex
@@ -2300,16 +2501,19 @@ void StyledWidget::layout_grid() {
 void StyledWidget::compute_style(const ScaledTheme& theme) {
     // Debug for buttons
     
+    
     // Start with base style
     current_style_ = base_style_;
     
     // Apply state styles
     apply_state_style();
     
+    
     // Compute final values
     computed_style_ = current_style_.compute(theme, 
                                             parent_ ? parent_->get_bounds() : bounds_,
                                             get_content_size());
+    
     
     needs_style_computation_ = false;
     
@@ -2332,9 +2536,6 @@ void StyledWidget::apply_state_style() {
     } else if (is_active() && base_style_.active_style) {
         current_style_.apply_state(base_style_.active_style.get());
     } else if (is_hovered() && base_style_.hover_style) {
-        if (get_widget_type() == "button") {
-            std::cout << "BUTTON APPLYING HOVER STYLE: " << id_ << std::endl;
-        }
         current_style_.apply_state(base_style_.hover_style.get());
     } else if (is_focused() && base_style_.focus_style) {
         current_style_.apply_state(base_style_.focus_style.get());

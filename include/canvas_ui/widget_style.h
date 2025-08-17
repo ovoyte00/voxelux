@@ -284,8 +284,8 @@ struct BorderStyle {
  */
 struct ShadowStyle {
     float offset_x = 0;
-    float offset_y = 2;
-    float blur_radius = 4;
+    float offset_y = 0;
+    float blur_radius = 0;  // No shadow by default
     float spread = 0;
     ColorValue color = ColorValue(ColorRGBA(0, 0, 0, 0.2f));
     bool inset = false;
@@ -757,6 +757,15 @@ public:
     
     // Compute final values using theme
     struct ComputedStyle {
+        // Unit types for tracking auto/percent/etc
+        enum SizeUnit {
+            PIXELS,
+            PERCENT,
+            AUTO,
+            FIT_CONTENT,
+            FLEX
+        };
+        
         // Resolved pixel values
         float padding_top, padding_right, padding_bottom, padding_left;
         float margin_top, margin_right, margin_bottom, margin_left;
@@ -764,6 +773,8 @@ public:
         float border_radius_tl, border_radius_tr, border_radius_bl, border_radius_br;
         ColorRGBA border_color;
         float width, height, min_width, max_width, min_height, max_height;
+        SizeUnit width_unit = AUTO;
+        SizeUnit height_unit = AUTO;
         ColorRGBA background_color;
         ColorRGBA text_color_rgba;
         float font_size_pixels;

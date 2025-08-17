@@ -161,12 +161,23 @@ GlyphInfo* FontFace::load_glyph(unsigned int codepoint, int size) {
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
             
-            // Upload glyph bitmap
-            glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_RED,
-                        g->bitmap.width, g->bitmap.rows, 
-                        0, GL_RED, GL_UNSIGNED_BYTE,
-                        g->bitmap.buffer);
+            // Clear texture first to avoid garbage data
+            if (g->bitmap.buffer == nullptr) {
+                // If no bitmap data, create cleared texture
+                std::vector<unsigned char> cleared(g->bitmap.width * g->bitmap.rows, 0);
+                glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+                glTexImage2D(GL_TEXTURE_2D, 0, GL_RED,
+                            g->bitmap.width, g->bitmap.rows, 
+                            0, GL_RED, GL_UNSIGNED_BYTE,
+                            cleared.data());
+            } else {
+                // Upload glyph bitmap
+                glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+                glTexImage2D(GL_TEXTURE_2D, 0, GL_RED,
+                            g->bitmap.width, g->bitmap.rows, 
+                            0, GL_RED, GL_UNSIGNED_BYTE,
+                            g->bitmap.buffer);
+            }
             
             glBindTexture(GL_TEXTURE_2D, 0);
             glyph.in_atlas = false;
@@ -410,11 +421,15 @@ TextMeasurement FontSystem::measure_text_accurate(const std::string& text, const
     });
 }
 
+// Viewport immediate mode text rendering - for 3D overlays like navigation widget
+// UI text should use the batched system in CanvasRenderer::draw_text()
 void FontSystem::render_text(CanvasRenderer* renderer, const std::string& text, 
                             const Point2D& position, const std::string& font_name, 
                             int size, const ColorRGBA& color) {
+    
     FontFace* font = get_font(font_name);
-    if (!font || text.empty()) {
+    if (!font) {
+        std::cerr << "Font not found: " << font_name << std::endl;
         return;
     }
     
@@ -547,10 +562,12 @@ uniform vec4 textColor;
 
 void main() {
     float alpha = texture(text, TexCoords).r;
-    // Ensure we only render where there's actual glyph data
-    if (alpha < 0.01) {
-        discard;  // Don't render pixels with very low alpha
+    // More aggressive alpha cutoff to prevent ghost pixels
+    if (alpha < 0.1) {
+        discard;  // Don't render pixels with low alpha
     }
+    // Apply gamma correction for better text rendering
+    alpha = pow(alpha, 1.0 / 2.2);
     FragColor = vec4(textColor.rgb, textColor.a * alpha);
 }
 )";

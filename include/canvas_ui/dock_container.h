@@ -47,8 +47,14 @@ public:
                 base_style_.height = SizeValue::auto_size();
                 break;
         }
-        base_style_.background = ColorValue("gray_5");
-        base_style_.gap = SpacingValue(1);  // 1px gap between columns
+        
+        // No background, just 1px gray_5 outline with center alignment
+        base_style_.background = ColorValue("transparent");
+        base_style_.outline.width = SpacingValue(1);
+        base_style_.outline.color = ColorValue("gray_5");
+        base_style_.outline.style = WidgetStyle::OutlineStyle::Style::Solid;
+        base_style_.outline.alignment = WidgetStyle::OutlineStyle::Alignment::Center;
+        base_style_.gap = SpacingValue(0);  // No gap between columns - they touch
     }
     
     ~DockContainer() override = default;
@@ -281,7 +287,8 @@ public:
         base_style_.flex_direction = WidgetStyle::FlexDirection::Column;
         base_style_.width = SizeValue::percent(100);
         base_style_.height = SizeValue::auto_size();
-        base_style_.background = ColorValue("gray_5");
+        base_style_.background = ColorValue("transparent");
+        // Bottom dock gets its background from individual panels
     }
     
     ~BottomDockContainer() override = default;

@@ -297,14 +297,14 @@ void EditorSplitView::render_resize_handle(CanvasRenderer* renderer) {
     auto handle_color = is_resizing_ ? theme.accent_primary : theme.gray_3;
     
     if (split_type_ == SplitType::HORIZONTAL) {
-        renderer->draw_line(
+        renderer->draw_line_batched(
             Point2D(handle.x + 1, handle.y),
             Point2D(handle.x + 1, handle.y + handle.height),
             handle_color,
             1.0f
         );
     } else {
-        renderer->draw_line(
+        renderer->draw_line_batched(
             Point2D(handle.x, handle.y + 1),
             Point2D(handle.x + handle.width, handle.y + 1),
             handle_color,

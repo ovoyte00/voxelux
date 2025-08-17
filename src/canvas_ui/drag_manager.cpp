@@ -142,7 +142,7 @@ void DragManager::render_drop_indicators(CanvasRenderer* renderer) {
         case DockContainer::DropZone::AFTER_COLUMN:
         case DockContainer::DropZone::EDGE:
             // Vertical line indicator
-            renderer->draw_line(
+            renderer->draw_line_batched(
                 Point2D(drop_target.preview_bounds.x, drop_target.preview_bounds.y),
                 Point2D(drop_target.preview_bounds.x, drop_target.preview_bounds.y + drop_target.preview_bounds.height),
                 theme.accent_primary,
@@ -169,7 +169,7 @@ void DragManager::render_drop_indicators(CanvasRenderer* renderer) {
             
         case DockContainer::DropZone::BETWEEN_GROUPS:
             // Horizontal line between groups
-            renderer->draw_line(
+            renderer->draw_line_batched(
                 Point2D(drop_target.preview_bounds.x, drop_target.preview_bounds.y),
                 Point2D(drop_target.preview_bounds.x + drop_target.preview_bounds.width, drop_target.preview_bounds.y),
                 theme.accent_primary,

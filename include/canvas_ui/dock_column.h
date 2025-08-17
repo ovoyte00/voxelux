@@ -99,29 +99,75 @@ public:
         TOOL        // Special tool dock with fixed widths
     };
 
-    DockColumn(DockSide side, ColumnType type = ColumnType::REGULAR) 
-        : Container("dock-column"), side_(side), type_(type), state_(ColumnState::EXPANDED) {
+    DockColumn(DockSide side, ColumnType type = ColumnType::REGULAR, ColumnState initial_state = ColumnState::EXPANDED) 
+        : Container("dock-column"), side_(side), type_(type), state_(initial_state) {
         
-        // Configure styling based on type
+        // Configure column container styling
         base_style_.display = WidgetStyle::Display::Flex;
         base_style_.flex_direction = WidgetStyle::FlexDirection::Column;
-        base_style_.background = ColorValue("gray_4");
-        base_style_.gap = SpacingValue(1);
+        base_style_.background = ColorValue("transparent");  // No background on column itself
+        base_style_.gap = SpacingValue(0);  // No gap between header and content
+        base_style_.height = SizeValue::percent(100);  // Extend full height
         
         // Set default widths based on type
         if (type == ColumnType::TOOL) {
-            collapsed_width_ = 48.0f;   // Tool icon size + padding
-            expanded_width_ = 280.0f;   // Tool panel width
-            min_width_ = 48.0f;
-            max_width_ = 400.0f;
+            collapsed_width_ = 36.0f;   // Collapsed width for all columns
+            expanded_width_ = 72.0f;    // Tool panel expanded (2-column grid)
+            min_width_ = 36.0f;
+            max_width_ = 72.0f;          // Tool dock has fixed widths
         } else {
-            collapsed_width_ = 36.0f;   // Icon bar width
+            collapsed_width_ = 36.0f;   // Icon bar width (standard)
             expanded_width_ = 250.0f;   // Default panel width
-            min_width_ = 150.0f;
+            min_width_ = 36.0f;         // Minimum width when collapsed
             max_width_ = 500.0f;
         }
         
-        current_width_ = expanded_width_;
+        // Set initial width based on state
+        current_width_ = (state_ == ColumnState::COLLAPSED) ? collapsed_width_ : expanded_width_;
+        base_style_.width = SizeValue(current_width_);
+        
+        // Create header (14px tall with expand/collapse button)
+        header_ = create_widget<Container>("dock-column-header");
+        header_->get_style()
+            .set_display(WidgetStyle::Display::Flex)
+            .set_flex_direction(WidgetStyle::FlexDirection::Row)
+            .set_height(SizeValue(14))
+            .set_background(ColorValue("gray_5"))
+            .set_align_items(WidgetStyle::AlignItems::Center)
+            .set_justify_content(WidgetStyle::JustifyContent::Center);
+        
+        // Add expand/collapse button to header
+        expand_button_ = create_widget<Button>();
+        expand_button_->set_icon(state_ == ColumnState::COLLAPSED ? "chevron_right" : "chevron_left");
+        expand_button_->get_style()
+            .set_width(SizeValue(14))
+            .set_height(SizeValue(14))
+            .set_padding(BoxSpacing::all(1))
+            .set_background(ColorValue("transparent"))
+            .set_border(BorderStyle());  // No border
+        expand_button_->set_on_click([this](StyledWidget*) {
+            toggle_state();
+        });
+        header_->add_child(expand_button_);
+        add_child(header_);
+        
+        // Create content container with gray_3 background
+        content_ = create_widget<Container>("dock-column-content");
+        content_->get_style()
+            .set_display(WidgetStyle::Display::Flex)
+            .set_flex_direction(WidgetStyle::FlexDirection::Column)
+            .set_flex_grow(1)  // Take remaining space
+            .set_background(ColorValue("gray_3"))
+            .set_gap(SpacingValue(1));  // Gap between panel groups
+        
+        // Start with content hidden if collapsed
+        if (state_ == ColumnState::COLLAPSED) {
+            content_->set_visible(false);
+        }
+        
+        add_child(content_);
+        
+        // Apply initial state styling
         update_style_for_state();
     }
     
@@ -157,8 +203,10 @@ public:
     void toggle_state() {
         if (state_ == ColumnState::COLLAPSED) {
             set_state(ColumnState::EXPANDED);
+            expand_button_->set_icon("chevron_left");
         } else if (state_ == ColumnState::EXPANDED) {
             set_state(ColumnState::COLLAPSED);
+            expand_button_->set_icon("chevron_right");
         }
     }
     
@@ -172,10 +220,10 @@ public:
             splitter->set_on_resize([this, index = panel_groups_.size() - 1](float delta) {
                 resize_group(index, delta);
             });
-            add_child(splitter);
+            content_->add_child(splitter);  // Add to content container
         }
         
-        add_child(group);
+        content_->add_child(group);  // Add to content container
         invalidate_layout();
     }
     
@@ -199,7 +247,7 @@ public:
         auto it = std::find(panel_groups_.begin(), panel_groups_.end(), group);
         if (it != panel_groups_.end()) {
             panel_groups_.erase(it);
-            remove_child(group);
+            content_->remove_child(group);  // Remove from content container
             
             // Check if column is now empty
             if (panel_groups_.empty() && empty_callback_) {
@@ -278,6 +326,11 @@ private:
     ColumnType type_;
     ColumnState state_;
     
+    // UI components
+    std::shared_ptr<Container> header_;
+    std::shared_ptr<Container> content_;
+    std::shared_ptr<Button> expand_button_;
+    
     std::vector<std::shared_ptr<PanelGroup>> panel_groups_;
     
     // Sizing
@@ -296,12 +349,24 @@ private:
     void update_style_for_state() {
         switch (state_) {
             case ColumnState::COLLAPSED:
-                base_style_.width = SizeValue(collapsed_width_);
+                base_style_.width = SizeValue(collapsed_width_);  // 36px
+                base_style_.min_width = SizeValue(collapsed_width_);
                 base_style_.set_overflow(WidgetStyle::Overflow::Hidden);
+                current_width_ = collapsed_width_;
+                // Hide content when collapsed - only show header
+                if (content_) {
+                    content_->set_visible(false);
+                }
                 break;
             case ColumnState::EXPANDED:
                 base_style_.width = SizeValue(expanded_width_);
+                base_style_.min_width = SizeValue(min_width_);
                 base_style_.set_overflow(WidgetStyle::Overflow::Visible);
+                current_width_ = expanded_width_;
+                // Show content when expanded
+                if (content_) {
+                    content_->set_visible(true);
+                }
                 break;
             case ColumnState::HIDDEN:
                 set_visible(false);

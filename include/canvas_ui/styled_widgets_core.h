@@ -14,6 +14,7 @@
 #include "layout_builder.h"
 #include <string>
 #include <functional>
+#include <iostream>
 
 namespace voxel_canvas {
 
@@ -34,6 +35,22 @@ public:
     const std::string& get_text() const { return text_; }
     
     std::string get_widget_type() const override { return "text"; }
+    
+    // Override for multi-pass layout to use text metrics
+    IntrinsicSizes calculate_intrinsic_sizes() override {
+        IntrinsicSizes sizes = StyledWidget::calculate_intrinsic_sizes();
+        
+        // If no explicit size set, use text measurement
+        if (sizes.preferred_width == 0 && !text_.empty()) {
+            Point2D text_size = get_content_size();
+            sizes.preferred_width = text_size.x;
+            sizes.preferred_height = text_size.y;
+            sizes.min_width = text_size.x;
+            sizes.min_height = text_size.y;
+        }
+        
+        return sizes;
+    }
     
     Point2D get_content_size() const override {
         if (text_.empty()) {
@@ -207,6 +224,63 @@ public:
     bool is_toggled() const { return is_toggled_; }
     
     std::string get_widget_type() const override { return "button"; }
+    
+    // Override for multi-pass layout to use text metrics
+    IntrinsicSizes calculate_intrinsic_sizes() override {
+        // For buttons with AUTO width/height, we need to calculate from text
+        // Don't call base class first since it might set wrong values
+        IntrinsicSizes sizes;
+        
+        // Calculate content size
+        Point2D content_size = get_content_size();
+        
+        // Set the base sizes from content
+        if (computed_style_.width_unit == WidgetStyle::ComputedStyle::AUTO) {
+            sizes.preferred_width = content_size.x;
+            sizes.min_width = content_size.x;
+            sizes.max_width = std::numeric_limits<float>::max();
+        } else {
+            // Use the base class calculation for non-AUTO widths
+            IntrinsicSizes base_sizes = StyledWidget::calculate_intrinsic_sizes();
+            sizes.preferred_width = base_sizes.preferred_width;
+            sizes.min_width = base_sizes.min_width;
+            sizes.max_width = base_sizes.max_width;
+        }
+        
+        if (computed_style_.height_unit == WidgetStyle::ComputedStyle::AUTO) {
+            sizes.preferred_height = content_size.y;
+            sizes.min_height = content_size.y;
+            sizes.max_height = std::numeric_limits<float>::max();
+        } else {
+            // Use the base class calculation for non-AUTO heights
+            IntrinsicSizes base_sizes = StyledWidget::calculate_intrinsic_sizes();
+            sizes.preferred_height = base_sizes.preferred_height;
+            sizes.min_height = base_sizes.min_height;
+            sizes.max_height = base_sizes.max_height;
+        }
+        
+        // Add padding (like base class does)
+        sizes.min_width += computed_style_.padding_left + computed_style_.padding_right;
+        sizes.preferred_width += computed_style_.padding_left + computed_style_.padding_right;
+        sizes.min_height += computed_style_.padding_top + computed_style_.padding_bottom;
+        sizes.preferred_height += computed_style_.padding_top + computed_style_.padding_bottom;
+        
+        // Add border (like base class does)
+        float border_width = computed_style_.border_width_left + computed_style_.border_width_right;
+        float border_height = computed_style_.border_width_top + computed_style_.border_width_bottom;
+        sizes.min_width += border_width;
+        sizes.preferred_width += border_width;
+        sizes.min_height += border_height;
+        sizes.preferred_height += border_height;
+        
+        // Add margins
+        sizes.min_width += computed_style_.margin_left + computed_style_.margin_right;
+        sizes.preferred_width += computed_style_.margin_left + computed_style_.margin_right;
+        sizes.min_height += computed_style_.margin_top + computed_style_.margin_bottom;
+        sizes.preferred_height += computed_style_.margin_top + computed_style_.margin_bottom;
+        
+        return sizes;
+    }
     
     Point2D get_content_size() const override {
         float width = 0, height = 0;

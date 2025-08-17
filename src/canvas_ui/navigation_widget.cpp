@@ -372,7 +372,7 @@ void NavigationWidget::draw_single_axis(CanvasRenderer* renderer, int axis_index
                 
                 // Calculate line thickness proportional to widget size
                 float line_thickness = (widget_base_size_ / 20.0f) * ui_scale;
-                renderer->draw_line(start, end, line_color, line_thickness);
+                renderer->draw_viewport_line(start, end, line_color, line_thickness);
                 break;
             }
         }
@@ -535,7 +535,7 @@ void NavigationWidget::draw_axis_connectors(CanvasRenderer* renderer) {
         // Calculate line thickness proportional to widget size
         // Use widget_size / 20 for good visibility
         float line_thickness = (widget_base_size_ / 20.0f) * ui_scale;
-        renderer->draw_line(start, end, line_color, line_thickness);
+        renderer->draw_viewport_line(start, end, line_color, line_thickness);
     }
 }
 
@@ -788,13 +788,13 @@ void NavigationWidget::render_filled_circle(CanvasRenderer* renderer, const Poin
                                            float radius, const ColorRGBA& color) {
     // Draw filled circle using Canvas renderer
     const int segments = 32;
-    renderer->draw_circle(center, radius, color, segments);
+    renderer->draw_viewport_circle(center, radius, color, segments);
 }
 
 void NavigationWidget::render_ring_shape(CanvasRenderer* renderer, const Point2D& center,
                                         float radius, const ColorRGBA& color, float thickness) {
     // Draw ring using dedicated ring drawing function
-    renderer->draw_circle_ring(center, radius, color, thickness, 32);
+    renderer->draw_viewport_circle_ring(center, radius, color, thickness, 32);
 }
 
 

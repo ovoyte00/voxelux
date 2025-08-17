@@ -12,6 +12,7 @@
 #include <vector>
 #include <string>
 #include <functional>
+#include <limits>
 
 namespace voxel_canvas {
 
@@ -128,12 +129,31 @@ protected:
     virtual void on_mouse_release(const InputEvent& event) {}
     virtual void on_mouse_move(const InputEvent& event) {}
     
-    // Layout management
+    // Layout management - Multi-pass system
     void perform_layout();  // Recursively layout this widget and children
     void invalidate_layout();  // Mark as needing layout (respects batch mode)
     bool needs_layout() const { return needs_layout_; }
     bool needs_style_computation() const { return needs_style_computation_; }
     void request_layout();  // Request layout to be performed (will be done automatically before render)
+    
+    // Multi-pass layout system
+    struct IntrinsicSizes {
+        float min_width = 0;
+        float preferred_width = 0;
+        float max_width = std::numeric_limits<float>::max();
+        float min_height = 0;
+        float preferred_height = 0;
+        float max_height = std::numeric_limits<float>::max();
+    };
+    
+    // Pass 1: Calculate intrinsic sizes (bottom-up)
+    virtual IntrinsicSizes calculate_intrinsic_sizes();
+    
+    // Pass 2: Resolve actual sizes based on constraints (top-down)
+    virtual void resolve_sizes(float available_width, float available_height);
+    
+    // Pass 3: Position children within resolved bounds (top-down)
+    virtual void position_children();
     
     // Style computation
     void compute_style(const ScaledTheme& theme);

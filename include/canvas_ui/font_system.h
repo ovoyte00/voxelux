@@ -108,6 +108,8 @@ public:
     // Accurate text measurement with kerning
     TextMeasurement measure_text_accurate(const std::string& text, const std::string& font_name, float font_size_px);
     
+    // Viewport immediate mode text rendering - for 3D overlays like navigation widget
+    // For UI text, use CanvasRenderer::draw_text() which uses batched rendering
     void render_text(CanvasRenderer* renderer, const std::string& text, 
                     const Point2D& position, const std::string& font_name, 
                     int size, const ColorRGBA& color);
@@ -150,6 +152,9 @@ private:
     // VAO/VBO for batch rendering
     unsigned int text_vao_ = 0;
     unsigned int text_vbo_ = 0;
+    
+    // Debug flag to disable SDF rendering
+    bool use_sdf_rendering_ = true;
     
     // Batch rendering data
     struct GlyphVertex {

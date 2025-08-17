@@ -72,7 +72,7 @@ protected:
         // Draw cursor if focused
         if (is_focused()) {
             float cursor_x = content_bounds.x + (value_.length() * 7.0f);  // Approximate
-            renderer->draw_line(
+            renderer->draw_line_batched(
                 Point2D(cursor_x, content_bounds.y + 2),
                 Point2D(cursor_x, content_bounds.y + content_bounds.height - 2),
                 computed_style_.text_color_rgba, 1.0f
@@ -212,11 +212,17 @@ protected:
         
         // Draw radio circle
         Point2D center(content_bounds.x + 8, content_bounds.y + 8);
-        renderer->draw_circle_ring(center, 8, computed_style_.text_color_rgba, 1.0f);
+        // Draw checkbox as a square outline for batched rendering
+        float box_size = 16;
+        Rect2D checkbox_rect(center.x - box_size/2, center.y - box_size/2, box_size, box_size);
+        renderer->draw_rect_outline(checkbox_rect, computed_style_.text_color_rgba, 1.0f);
         
         // Draw inner circle if selected
         if (selected_) {
-            renderer->draw_circle(center, 4, ColorRGBA(0, 0.5f, 1, 1));
+            // Draw checkmark as a filled rectangle for batched rendering
+            float check_size = 8;
+            Rect2D check_rect(center.x - check_size/2, center.y - check_size/2, check_size, check_size);
+            renderer->draw_rect(check_rect, ColorRGBA(0, 0.5f, 1, 1));
         }
         
         // Draw label
@@ -466,8 +472,11 @@ protected:
         
         // Draw handle
         float handle_x = content_bounds.x + content_bounds.width * ratio;
-        renderer->draw_circle(Point2D(handle_x, content_bounds.y + content_bounds.height / 2),
-                            8, ColorRGBA(0.8f, 0.8f, 0.8f, 1.0f));
+        // Draw slider handle as a rectangle for batched rendering
+        float handle_size = 16;
+        float handle_y = content_bounds.y + content_bounds.height / 2;
+        Rect2D handle_rect(handle_x - handle_size/2, handle_y - handle_size/2, handle_size, handle_size);
+        renderer->draw_rect(handle_rect, ColorRGBA(0.8f, 0.8f, 0.8f, 1.0f));
         
         // Draw value text if hovered
         if (is_hovered()) {

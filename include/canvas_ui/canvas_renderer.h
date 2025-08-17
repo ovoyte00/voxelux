@@ -101,15 +101,21 @@ public:
     void end_frame();
     void present_frame();
     
-    // Basic drawing primitives
+    // Basic drawing primitives (UI - Batched rendering)
     void draw_rect(const Rect2D& rect, const ColorRGBA& color);
     void draw_rect_outline(const Rect2D& rect, const ColorRGBA& color, float line_width = 1.0f);
-    void draw_line(const Point2D& start, const Point2D& end, const ColorRGBA& color, float width = 1.0f);
-    void draw_circle(const Point2D& center, float radius, const ColorRGBA& color, int segments = 32);
-    void draw_circle_ring(const Point2D& center, float radius, const ColorRGBA& color, float thickness = 3.0f, int segments = 32);
     void draw_text(const std::string& text, const Point2D& position, const ColorRGBA& color, 
                    float size = 14.0f, TextAlign align = TextAlign::LEFT, 
                    TextBaseline baseline = TextBaseline::TOP);
+    
+    // UI line drawing using batched rectangles
+    void draw_line_batched(const Point2D& start, const Point2D& end, const ColorRGBA& color, float width = 1.0f);
+    
+    // Viewport immediate rendering (for 3D overlays like navigation widget)
+    // These use immediate mode OpenGL and should only be called by viewport components
+    void draw_viewport_line(const Point2D& start, const Point2D& end, const ColorRGBA& color, float width = 1.0f);
+    void draw_viewport_circle(const Point2D& center, float radius, const ColorRGBA& color, int segments = 32);
+    void draw_viewport_circle_ring(const Point2D& center, float radius, const ColorRGBA& color, float thickness = 3.0f, int segments = 32);
     
     // SDF-based widget rendering (future implementation)
     void draw_widget(const Rect2D& rect, const ColorRGBA& color,
@@ -214,6 +220,15 @@ public:
     void flush_current_batch();  // Flush the current batch being built
     void render_sorted_batches(); // Render all batches sorted by state
     
+    // Instance rendering
+    void begin_instance_batch();
+    void add_widget_instance(const Rect2D& rect, const ColorRGBA& color, 
+                            float corner_radius = 0.0f, float border_width = 0.0f,
+                            const ColorRGBA& border_color = ColorRGBA(0,0,0,0),
+                            float outline_width = 0.0f, float outline_offset = 0.0f,
+                            const ColorRGBA& outline_color = ColorRGBA(0,0,0,0));
+    void flush_instances();  // Render all accumulated instances in one draw call
+    
     // Viewport management
     void set_viewport(int x, int y, int width, int height);
     Point2D get_viewport_size() const;
@@ -254,9 +269,7 @@ public:
     void bind_texture(GLuint texture_id, int unit = 0);
     void draw_texture(GLuint texture_id, const Rect2D& rect, const ColorRGBA& tint = ColorRGBA(1, 1, 1, 1));
     
-    // SDF rendering support
-    void draw_sdf_texture(GLuint sdf_texture_id, const Rect2D& rect, const ColorRGBA& tint,
-                         float threshold = 0.5f, float smoothness = 0.02f);
+    // SDF shader support (used internally by UI shader)
     GLuint get_sdf_shader() const { return sdf_shader_program_; }
     bool has_sdf_support() const { return sdf_shader_program_ != 0; }
     
@@ -311,6 +324,7 @@ private:
     void setup_default_textures();
     
     void create_ui_shader();
+    void create_instance_shader();
     void create_text_shader();
     void create_sdf_shader();
     void create_blur_shader();
@@ -322,12 +336,17 @@ private:
     // Debug visualization
     void draw_occlusion_debug();
     
+    // Text batching
+    void batch_text(const std::string& text, const Point2D& position, 
+                    const std::string& font_name, int size, const ColorRGBA& color);
+    
 private:
     CanvasWindow* window_;
     bool initialized_ = false;
     
     // Rendering resources
     std::unique_ptr<ShaderProgram> ui_shader_;
+    std::unique_ptr<ShaderProgram> instance_shader_;  // New instanced rendering shader
     std::unique_ptr<ShaderProgram> text_shader_;
     std::unique_ptr<FontSystem> font_system_;
     std::unique_ptr<PolylineShader> polyline_shader_;
@@ -335,6 +354,34 @@ private:
     GLuint ui_vao_ = 0;
     GLuint ui_vbo_ = 0; 
     GLuint ui_ebo_ = 0;
+    
+    // Static widget geometry (industry standard approach)
+    GLuint widget_vao_ = 0;
+    GLuint widget_vbo_ = 0;
+    GLuint widget_ebo_ = 0;
+    
+    // Instance rendering system - Single-pass widget rendering
+    struct WidgetInstanceData {
+        float transform[4];      // x, y, width, height
+        float color[4];          // RGBA (background/fill color)
+        float uv_rect[4];        // texture atlas coords (u0, v0, u1, v1)
+        float params[4];         // corner_radius (tl, tr, br, bl)
+        float border[4];         // border_width, border_color RGB
+        float extra[4];          // outline_width, outline_offset, outline_color RG
+        // Note: extra[2] = outline_color B, extra[3] = outline_alpha
+    };
+    
+    GLuint instance_vbo_ = 0;  // Instance data buffer
+    std::vector<WidgetInstanceData> instance_data_;
+    size_t max_instances_ = 10000;  // Maximum instances per batch
+    
+    // Performance optimization flags (cross-platform)
+    bool use_buffer_orphaning_ = true;   // Use buffer orphaning for updates
+    bool use_mapped_buffers_ = false;    // Use mapped buffers (requires GL 4.4+)
+    
+    // Advanced features (only used if available)
+    void* instance_buffer_ptr_ = nullptr;  // For persistent mapping (GL 4.4+)
+    GLsync fence_sync_ = 0;                // For sync operations (GL 4.4+)
     
     // SDF shader
     GLuint sdf_shader_program_ = 0;
@@ -392,11 +439,13 @@ private:
         GLuint shader_id = 0;         // Current shader
         bool needs_flush = false;
         int layer = 0;                // Render layer for sorting
+        bool is_text = false;         // Whether this batch contains text glyphs
         
         void reset() {
             vertices.clear();
             indices.clear();
             needs_flush = false;
+            is_text = false;
         }
         
         bool can_batch_with(GLuint tex, GLenum blend, GLuint shader) const {
@@ -427,6 +476,7 @@ private:
         GLuint shader_id;
         int layer;
         uint64_t sort_key;
+        bool is_text;
         
         CompletedBatch(const CurrentBatch& current) 
             : vertices(current.vertices)
@@ -435,6 +485,7 @@ private:
             , blend_mode(current.blend_mode)
             , shader_id(current.shader_id)
             , layer(current.layer)
+            , is_text(current.is_text)
             , sort_key(current.get_sort_key()) {}
     };
     std::vector<CompletedBatch> completed_batches_;

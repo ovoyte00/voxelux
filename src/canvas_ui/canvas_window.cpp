@@ -138,8 +138,9 @@ bool CanvasWindow::initialize() {
     glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
 #endif
     
-    // Enable multisampling for better quality
-    glfwWindowHint(GLFW_SAMPLES, 4);
+    // TEMPORARILY DISABLE multisampling to debug rendering issue
+    // With MSAA, edge fragments can be blended multiple times causing bright rims
+    glfwWindowHint(GLFW_SAMPLES, 0);  // Was 4
     
     // Create window
     window_ = glfwCreateWindow(width_, height_, title_.c_str(), nullptr, nullptr);

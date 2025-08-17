@@ -201,6 +201,14 @@ WidgetStyle& WidgetStyle::operator=(const WidgetStyle& other) {
         left = other.left;
         z_index = other.z_index;
         cursor = other.cursor;
+        transform = other.transform;
+        transform_origin = other.transform_origin;
+        outline = other.outline;
+        visibility = other.visibility;
+        background_image = other.background_image;
+        background_gradient = other.background_gradient;
+        border_gradient = other.border_gradient;
+        outline_gradient = other.outline_gradient;
         
         // Deep copy state variants
         hover_style = other.hover_style ? std::make_unique<WidgetStyle>(*other.hover_style) : nullptr;
@@ -369,6 +377,25 @@ WidgetStyle::ComputedStyle WidgetStyle::compute(const ScaledTheme& theme,
     computed.max_width = max_width.resolve(parent_width, INFINITY, theme);
     computed.min_height = min_height.resolve(parent_height, 0, theme);
     computed.max_height = max_height.resolve(parent_height, INFINITY, theme);
+    
+    // Track the unit type for layout calculations
+    switch (width.unit) {
+        case SizeValue::Pixels: computed.width_unit = ComputedStyle::PIXELS; break;
+        case SizeValue::Percent: computed.width_unit = ComputedStyle::PERCENT; break;
+        case SizeValue::Auto: computed.width_unit = ComputedStyle::AUTO; break;
+        case SizeValue::FitContent: computed.width_unit = ComputedStyle::FIT_CONTENT; break;
+        case SizeValue::Flex: computed.width_unit = ComputedStyle::FLEX; break;
+        default: computed.width_unit = ComputedStyle::AUTO; break;
+    }
+    
+    switch (height.unit) {
+        case SizeValue::Pixels: computed.height_unit = ComputedStyle::PIXELS; break;
+        case SizeValue::Percent: computed.height_unit = ComputedStyle::PERCENT; break;
+        case SizeValue::Auto: computed.height_unit = ComputedStyle::AUTO; break;
+        case SizeValue::FitContent: computed.height_unit = ComputedStyle::FIT_CONTENT; break;
+        case SizeValue::Flex: computed.height_unit = ComputedStyle::FLEX; break;
+        default: computed.height_unit = ComputedStyle::AUTO; break;
+    }
     
     // Apply constraints
     computed.width = std::max(computed.min_width, std::min(computed.max_width, computed.width));

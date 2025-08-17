@@ -16,6 +16,7 @@
 #include "viewport_3d_editor.h"
 #include <memory>
 #include <vector>
+#include <cmath>
 
 namespace voxel_canvas {
 
@@ -37,7 +38,8 @@ public:
         base_style_.flex_direction = WidgetStyle::FlexDirection::Column;
         base_style_.width = SizeValue::percent(100);
         base_style_.height = SizeValue::percent(100);
-        base_style_.background = ColorValue("gray_3");  // Match viewport background
+        // Transparent background - container relies on OpenGL clear color
+        base_style_.background = ColorValue(ColorRGBA(0, 0, 0, 0));
         base_style_.padding = BoxSpacing(0);  // No padding - menu bar should be flush with window edge
         base_style_.margin = BoxSpacing(0);   // No margin
     }
@@ -276,7 +278,9 @@ private:
         auto center_area = LayoutBuilder::column();
         center_area->set_id("center-area");
         center_area->get_style()
-            .set_flex_grow(1);  // Take remaining horizontal space
+            .set_flex_grow(1)  // Take remaining horizontal space
+            .set_flex_shrink(1)  // Allow shrinking if needed
+            .set_width(SizeValue(0));  // Start with 0 width, let flex-grow expand it
         
         // FILE TABS - Above the viewport in center area
         file_tabs_ = create_widget<TabContainer>(true);  // true = file tabs style
