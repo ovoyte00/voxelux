@@ -119,7 +119,7 @@ class NativeInput;
         }
         
         // Debug output
-        const char* phase_str = "none";
+        [[maybe_unused]] const char* phase_str{"none"};
         if (phase == NSEventPhaseBegan) phase_str = "began";
         else if (phase == NSEventPhaseChanged) phase_str = "changed";
         else if (phase == NSEventPhaseEnded) phase_str = "ended";
@@ -180,9 +180,9 @@ class NativeInput;
     // For magnification, use the magnification value as the delta
     // Positive magnification = zoom in, negative = zoom out
     // Scale the magnification to match expected scroll delta ranges
-    float magnification = event.magnification;
+    float magnification{static_cast<float>(event.magnification)};
     native_event.delta_x = 0;
-    native_event.delta_y = magnification * 10.0f; // Scale factor for zoom sensitivity
+    native_event.delta_y = static_cast<double>(magnification * 10.0f); // Scale factor for zoom sensitivity
     
     // Set a special flag to indicate this is a pinch gesture
     native_event.is_pinch = true;
@@ -260,7 +260,7 @@ void NativeInput::shutdown() {
     }
     
     if (platform_data_) {
-        VoxeluxScrollInterceptor* interceptor = (VoxeluxScrollInterceptor*)platform_data_;
+        VoxeluxScrollInterceptor* interceptor{static_cast<VoxeluxScrollInterceptor*>(platform_data_)};
         [interceptor stopMonitoring];
         [interceptor release];
         platform_data_ = nullptr;

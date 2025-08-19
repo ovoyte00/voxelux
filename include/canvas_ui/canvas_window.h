@@ -16,6 +16,8 @@
 #include <memory>
 #include <vector>
 #include <unordered_map>
+#include <atomic>
+#include <mutex>
 
 // Forward declare GLFW types to avoid including GLFW in header
 struct GLFWwindow;
@@ -70,6 +72,10 @@ public:
     // System access
     GLFWwindow* get_glfw_handle() const { return window_; }
     
+    // Resize callback for smooth resizing (professional UI pattern)
+    using ResizeCallback = std::function<void(int width, int height)>;
+    void set_resize_callback(ResizeCallback callback) { resize_callback_ = callback; }
+    
     // Cursor control for infinite mouse dragging
     void capture_cursor();  // Hide cursor and enable unlimited movement
     void release_cursor();  // Show cursor and restore normal behavior
@@ -79,6 +85,10 @@ public:
     // Theme management
     void set_theme(const CanvasTheme& theme);
     const CanvasTheme& get_theme() const { return theme_; }
+    
+    // Viewport management for multi-threaded rendering
+    bool needs_viewport_update() const { return viewport_needs_update_; }
+    void update_viewport_from_render_thread();  // Call from render thread with GL context current
     
     // Event callbacks (called by GLFW)
     void on_window_resize(int width, int height);
@@ -144,6 +154,13 @@ private:
     // Initialization state
     bool initialized_ = false;
     bool gl_context_initialized_ = false;
+    
+    // Viewport update tracking for thread-safe rendering
+    std::atomic<bool> viewport_needs_update_{false};
+    std::mutex viewport_mutex_;
+    
+    // Resize callback for live updates
+    ResizeCallback resize_callback_;
 };
 
 /**

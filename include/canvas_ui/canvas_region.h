@@ -223,14 +223,14 @@ public:
     // Lifecycle
     virtual void initialize() {}
     virtual void shutdown() {}
-    virtual void update(float delta_time) {}
+    virtual void update([[maybe_unused]] float delta_time) {}
     
     // Rendering
     virtual void render(CanvasRenderer* renderer, const Rect2D& bounds) = 0;
-    virtual void render_overlay(CanvasRenderer* renderer, const Rect2D& bounds) {}
+    virtual void render_overlay([[maybe_unused]] CanvasRenderer* renderer, [[maybe_unused]] const Rect2D& bounds) {}
     
     // Event handling
-    virtual bool handle_event(const InputEvent& event, const Rect2D& bounds) { return false; }
+    virtual bool handle_event([[maybe_unused]] const InputEvent& event, [[maybe_unused]] const Rect2D& bounds) { return false; }
     virtual bool wants_keyboard_focus() const { return false; }
     virtual bool wants_mouse_capture() const { return false; }
     

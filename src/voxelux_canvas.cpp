@@ -19,8 +19,8 @@
 
 #include <iostream>
 #include <memory>
-#include <thread>
 #include <chrono>
+#include <thread>
 
 using namespace voxel_canvas;
 
@@ -57,6 +57,36 @@ public:
         auto* region_manager = window_->get_region_manager();
         layout_->set_region_manager(region_manager);
         
+        // Setup resize callback for smooth window resizing
+        window_->set_resize_callback([this](int width, int height) {
+            // Update layout dimensions immediately
+            layout_->on_window_resize(width, height);
+            
+            // During resize drag, the OS blocks the main loop on macOS/Windows
+            // We must render immediately here for smooth resizing
+            auto* renderer{window_->get_renderer()};
+            if (renderer) {
+                // Critical: Update OpenGL viewport immediately for correct rendering
+                glViewport(0, 0, width, height);
+                
+                // Update renderer's viewport tracking
+                renderer->set_viewport(0, 0, width, height);
+                
+                // Refresh layout with new dimensions
+                layout_->refresh_layout(renderer);
+                
+                // Render frame immediately
+                renderer->begin_frame();
+                glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+                layout_->render(renderer);
+                renderer->end_frame();
+                renderer->present_frame();
+                
+                // Show the frame immediately
+                window_->swap_buffers();
+            }
+        });
+        
         // Setup event handlers after layout is initialized
         setup_event_handlers();
         setup_default_workspace();
@@ -66,69 +96,84 @@ public:
     }
     
     void run() {
-        std::cout << "Starting Voxelux main loop..." << std::endl;
+        std::cout << "Starting Voxelux..." << std::endl;
         std::cout << "Press ESC or close window to exit." << std::endl;
         
+        // Track frame timing for consistent updates
+        auto last_frame_time{std::chrono::high_resolution_clock::now()};
+        const auto target_frame_time{std::chrono::milliseconds(16)}; // ~60 FPS
+        
+        // Track size for detecting changes
+        Point2D last_size{window_->get_framebuffer_size()};
+        float last_scale{window_->get_content_scale()};
+        
+        // Main render loop with continuous updates
         while (!window_->should_close()) {
+            auto frame_start{std::chrono::high_resolution_clock::now()};
+            
+            // Process events non-blocking for continuous rendering
             window_->poll_events();
             
-            // Handle window resize and DPI changes
-            Point2D current_size = window_->get_framebuffer_size();
-            float current_scale = window_->get_content_scale();
-            static Point2D last_size = current_size;
-            static float last_scale = current_scale;
+            // Check for size or scale changes
+            Point2D current_size{window_->get_framebuffer_size()};
+            float current_scale{window_->get_content_scale()};
             
-            if (current_size.x != last_size.x || current_size.y != last_size.y) {
-                layout_->on_window_resize(current_size.x, current_size.y);
-                
-                // Immediate refresh after resize (standard UI practice)
-                auto* renderer = window_->get_renderer();
-                if (renderer) {
-                    layout_->refresh_layout(renderer);
-                }
-                
+            bool size_changed{current_size.x != last_size.x || current_size.y != last_size.y};
+            bool scale_changed{current_scale != last_scale};
+            
+            // Handle size changes immediately for smooth resizing
+            if (size_changed) {
+                layout_->on_window_resize(static_cast<int>(current_size.x), 
+                                        static_cast<int>(current_size.y));
                 last_size = current_size;
             }
             
-            if (current_scale != last_scale) {
+            // Handle DPI scale changes
+            if (scale_changed) {
                 layout_->set_content_scale(current_scale);
-                
-                // Immediate refresh after DPI change (standard UI practice)
-                auto* renderer = window_->get_renderer();
-                if (renderer) {
-                    layout_->refresh_layout(renderer);
-                }
-                
                 last_scale = current_scale;
                 std::cout << "Content scale changed to: " << current_scale << "x" << std::endl;
             }
             
-            // Custom render (replacing window_->render_frame())
-            auto* renderer = window_->get_renderer();
-            if (renderer) {
-                renderer->begin_frame();
-                
-                // Render the VoxeluxLayout (which includes menu, docks, etc.)
-                layout_->render(renderer);
-                
-                // TODO: Re-enable RegionManager once layout is working
-                // For now, just render a test viewport in the central area
-                /*
-                if (auto* region_manager = window_->get_region_manager()) {
-                    Rect2D central_area = layout_->get_central_area();
-                    region_manager->update_layout(central_area);
-                    region_manager->render_regions();
-                }
-                */
-                
-                renderer->end_frame();
-                renderer->present_frame();
+            // Update viewport if window system requires it
+            if (window_->needs_viewport_update()) {
+                window_->update_viewport_from_render_thread();
             }
             
+            // Get renderer for this frame
+            auto* renderer{window_->get_renderer()};
+            if (!renderer) {
+                continue;
+            }
+            
+            // Refresh layout when size or scale changed
+            if (size_changed || scale_changed) {
+                layout_->refresh_layout(renderer);
+            }
+            
+            // Render every frame for smooth updates
+            renderer->begin_frame();
+            
+            // Clear background
+            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+            
+            // Render UI
+            layout_->render(renderer);
+            
+            // Complete frame
+            renderer->end_frame();
+            renderer->present_frame();
             window_->swap_buffers();
             
-            // Small delay to prevent busy waiting
-            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            // Frame timing for consistent 60 FPS
+            auto frame_end{std::chrono::high_resolution_clock::now()};
+            auto elapsed{frame_end - frame_start};
+            
+            // Only sleep if we finished early
+            if (elapsed < target_frame_time) {
+                auto sleep_time{target_frame_time - elapsed};
+                std::this_thread::sleep_for(sleep_time);
+            }
         }
         
         std::cout << "Voxelux main loop ended" << std::endl;

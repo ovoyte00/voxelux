@@ -15,6 +15,27 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+# Compiler warnings as errors for flawless code
+if(MSVC)
+    # Visual Studio
+    add_compile_options(/W4 /WX)  # Warning level 4, warnings as errors
+    add_compile_options(/permissive-)  # Strict standards conformance
+else()
+    # GCC/Clang
+    add_compile_options(-Wall -Wextra)  # TODO: Add back -Werror after fixing all warnings
+    add_compile_options(-Wpedantic)  # Strict ISO C++ compliance
+    add_compile_options(-Wconversion)  # Warn on type conversions
+    add_compile_options(-Wshadow)  # Warn on variable shadowing
+    add_compile_options(-Wnon-virtual-dtor)  # Warn on non-virtual destructors
+    add_compile_options(-Wold-style-cast)  # Warn on C-style casts
+    add_compile_options(-Wcast-align)  # Warn on potential alignment issues
+    add_compile_options(-Wunused)  # Warn on unused entities
+    add_compile_options(-Woverloaded-virtual)  # Warn on virtual function issues
+    add_compile_options(-Wnull-dereference)  # Warn on null dereferences
+    add_compile_options(-Wdouble-promotion)  # Warn on float to double promotions
+    add_compile_options(-Wformat=2)  # Strict format string checking
+endif()
+
 # Build options
 option(VOXELUX_BUILD_TESTS "Build tests" ON)
 

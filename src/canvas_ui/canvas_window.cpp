@@ -335,6 +335,15 @@ float CanvasWindow::get_content_scale() const {
     return content_scale_;
 }
 
+void CanvasWindow::update_viewport_from_render_thread() {
+    // Only call this from render thread with GL context current
+    if (viewport_needs_update_ && renderer_) {
+        std::lock_guard<std::mutex> lock{viewport_mutex_};
+        renderer_->set_viewport(0, 0, framebuffer_width_, framebuffer_height_);
+        viewport_needs_update_ = false;
+    }
+}
+
 void CanvasWindow::set_ui_scale(float scale) {
     ui_scale_ = std::max(0.25f, std::min(4.0f, scale));  // Clamp to reasonable range
     calculate_dpi_and_scaling();
@@ -476,9 +485,8 @@ void CanvasWindow::on_window_resize(int width, int height) {
     // Recalculate DPI and scaling when window changes
     calculate_dpi_and_scaling();
     
-    if (renderer_) {
-        renderer_->set_viewport(0, 0, framebuffer_width_, framebuffer_height_);
-    }
+    // Mark viewport as needing update - render thread will handle it
+    viewport_needs_update_ = true;
 }
 
 void CanvasWindow::calculate_dpi_and_scaling() {
@@ -534,8 +542,12 @@ void CanvasWindow::on_framebuffer_resize(int width, int height) {
     // Recalculate DPI and scaling when framebuffer changes
     calculate_dpi_and_scaling();
     
-    if (renderer_) {
-        renderer_->set_viewport(0, 0, width, height);
+    // Mark viewport as needing update - render thread will handle it
+    viewport_needs_update_ = true;
+    
+    // Trigger resize callback for immediate layout update (professional UI pattern)
+    if (resize_callback_) {
+        resize_callback_(width, height);
     }
 }
 

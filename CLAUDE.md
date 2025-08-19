@@ -7,11 +7,49 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Voxelux is a state-of-the-art professional voxel 3D editor with a sleek, modern interface designed to compete with leading tools like Qubicle. Built with modern C++20, it features a modular architecture where specialized modules (Minecraft, Unity, Unreal, etc.) extend the core voxel editing capabilities. The core focuses on general voxel 3D editing with a professional, modern aesthetic.
 
 ### Key Technologies
-- **Language**: C++20
+- **Language**: C++20 (with modern syntax requirements)
 - **Build System**: CMake (minimum version 3.20)
 - **Graphics**: Custom OpenGL rendering pipeline with proprietary framework
 - **Architecture**: Event-driven system with planned plugin support
 - **Monetization**: Subscription-based model
+
+### C++ Coding Standards
+
+**Compiler Requirements**:
+- All warnings must be treated as errors (`-Werror` / `/WX`)
+- Enable all reasonable warnings (`-Wall -Wextra` / `/W4`)
+- Code must compile with zero warnings
+- Use `[[maybe_unused]]` to suppress intentional unused parameter warnings
+- Use explicit casts to suppress intentional conversion warnings
+
+**Modern C++20 Requirements**:
+- Use modern C++20 features and idioms
+- All variable initialization MUST use direct list initialization: `int x{}` or `int x{1}`
+- NEVER use `=` for initialization: ~~`int x = 0`~~ → `int x{0}`
+- Prefer `auto` with brace initialization where appropriate: `auto value{42}`
+- Use uniform initialization for all types including containers: `std::vector<int> v{1, 2, 3}`
+- Member variables in classes: `int width_{}; float scale_{1.0f};`
+- Function parameters can still use `=` for default values: `void func(int x = 0)`
+- Use designated initializers: `Point p{.x = 10, .y = 20}`
+- Prefer `std::string_view` over `const std::string&` for string parameters
+- Use concepts and ranges where appropriate
+- Variables and function parameters that are defined but never used MUST have the `[[maybe_unused]]` attribute
+
+**Comment Style Requirements**:
+- Comments above functions explain **WHAT** the function does
+- Comments above statements/expressions explain **WHY** it's being done, not what is obvious from the code
+- Bad: `// Increment x` above `x++`
+- Good: `// Need to advance past the header bytes` above `x++`
+- Function example:
+  ```cpp
+  // Calculates the viewport transformation matrix for rendering
+  Matrix4 calculate_viewport_transform() { ... }
+  ```
+- Inline example:
+  ```cpp
+  // Must clear before resize to avoid stale bounds affecting layout
+  computed_style_ = WidgetStyle::ComputedStyle{};
+  ```
 
 ### Core Features
 

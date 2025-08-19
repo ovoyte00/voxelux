@@ -485,8 +485,8 @@ private:
             , blend_mode(current.blend_mode)
             , shader_id(current.shader_id)
             , layer(current.layer)
-            , is_text(current.is_text)
-            , sort_key(current.get_sort_key()) {}
+            , sort_key(current.get_sort_key())
+            , is_text(current.is_text) {}
     };
     std::vector<CompletedBatch> completed_batches_;
     
