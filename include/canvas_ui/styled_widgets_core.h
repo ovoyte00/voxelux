@@ -451,7 +451,7 @@ public:
     std::string get_widget_type() const override { return "separator"; }
     
 private:
-    Orientation orientation_;
+    [[maybe_unused]] Orientation orientation_;
 };
 
 } // namespace voxel_canvas

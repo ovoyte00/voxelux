@@ -64,7 +64,7 @@ bool FontFace::load() {
     }
     
     // Set default size
-    FT_Set_Pixel_Sizes(face_, 0, default_size_);
+    FT_Set_Pixel_Sizes(face_, 0, static_cast<FT_UInt>(default_size_));
     
     // Initialize font metrics for accurate measurement
     metrics_ = std::make_unique<FontMetrics>();
@@ -102,7 +102,7 @@ GlyphInfo* FontFace::get_glyph(unsigned int codepoint, int size) {
         cache.pixel_size = size;
         
         // Set font size and get metrics
-        FT_Set_Pixel_Sizes(face_, 0, size);
+        FT_Set_Pixel_Sizes(face_, 0, static_cast<FT_UInt>(size));
         cache.line_height = face_->size->metrics.height >> 6;
         cache.ascender = face_->size->metrics.ascender >> 6;
         cache.descender = face_->size->metrics.descender >> 6;
@@ -128,7 +128,7 @@ GlyphInfo* FontFace::load_glyph(unsigned int codepoint, int size) {
     }
     
     // Set size
-    FT_Set_Pixel_Sizes(face_, 0, size);
+    FT_Set_Pixel_Sizes(face_, 0, static_cast<FT_UInt>(size));
     
     // Load glyph
     if (FT_Load_Char(face_, codepoint, FT_LOAD_RENDER)) {
@@ -148,7 +148,7 @@ GlyphInfo* FontFace::load_glyph(unsigned int codepoint, int size) {
     if (g->bitmap.width > 0 && g->bitmap.rows > 0) {
         // Check if we should use atlas (for smaller glyphs)
         bool use_atlas = g_font_system && g_font_system->try_add_to_atlas(glyph, g->bitmap.buffer, 
-                                                                         g->bitmap.width, g->bitmap.rows);
+                                                                         static_cast<int>(g->bitmap.width), static_cast<int>(g->bitmap.rows));
         
         if (!use_atlas) {
             // Create individual texture for large glyphs
@@ -167,14 +167,14 @@ GlyphInfo* FontFace::load_glyph(unsigned int codepoint, int size) {
                 std::vector<unsigned char> cleared(g->bitmap.width * g->bitmap.rows, 0);
                 glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
                 glTexImage2D(GL_TEXTURE_2D, 0, GL_RED,
-                            g->bitmap.width, g->bitmap.rows, 
+                            static_cast<GLsizei>(g->bitmap.width), static_cast<GLsizei>(g->bitmap.rows), 
                             0, GL_RED, GL_UNSIGNED_BYTE,
                             cleared.data());
             } else {
                 // Upload glyph bitmap
                 glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
                 glTexImage2D(GL_TEXTURE_2D, 0, GL_RED,
-                            g->bitmap.width, g->bitmap.rows, 
+                            static_cast<GLsizei>(g->bitmap.width), static_cast<GLsizei>(g->bitmap.rows), 
                             0, GL_RED, GL_UNSIGNED_BYTE,
                             g->bitmap.buffer);
             }
@@ -197,7 +197,7 @@ float FontFace::get_line_height(int size) const {
     
     // Calculate from face metrics
     if (face_) {
-        FT_Set_Pixel_Sizes(const_cast<FT_Face>(face_), 0, size);
+        FT_Set_Pixel_Sizes(const_cast<FT_Face>(face_), 0, static_cast<FT_UInt>(size));
         return face_->size->metrics.height >> 6;
     }
     
@@ -211,7 +211,7 @@ float FontFace::get_ascender(int size) const {
     }
     
     if (face_) {
-        FT_Set_Pixel_Sizes(const_cast<FT_Face>(face_), 0, size);
+        FT_Set_Pixel_Sizes(const_cast<FT_Face>(face_), 0, static_cast<FT_UInt>(size));
         return face_->size->metrics.ascender >> 6;
     }
     
@@ -225,7 +225,7 @@ float FontFace::get_descender(int size) const {
     }
     
     if (face_) {
-        FT_Set_Pixel_Sizes(const_cast<FT_Face>(face_), 0, size);
+        FT_Set_Pixel_Sizes(const_cast<FT_Face>(face_), 0, static_cast<FT_UInt>(size));
         return face_->size->metrics.descender >> 6;
     }
     
@@ -352,7 +352,7 @@ FontFace* FontSystem::get_font(const std::string& name) {
 
 // UTF-8 decoding helper
 static unsigned int decode_utf8(const std::string& text, size_t& index) {
-    unsigned char c = text[index];
+    unsigned char c = static_cast<unsigned char>(text[index]);
     unsigned int codepoint = 0;
     
     if ((c & 0x80) == 0) {
@@ -362,7 +362,7 @@ static unsigned int decode_utf8(const std::string& text, size_t& index) {
     } else if ((c & 0xE0) == 0xC0) {
         // 2-byte sequence
         if (index + 1 < text.length()) {
-            codepoint = ((c & 0x1F) << 6) | (text[index + 1] & 0x3F);
+            codepoint = static_cast<unsigned int>(((c & 0x1F) << 6) | (text[index + 1] & 0x3F));
             index += 2;
         } else {
             index += 1; // Invalid sequence
@@ -370,9 +370,9 @@ static unsigned int decode_utf8(const std::string& text, size_t& index) {
     } else if ((c & 0xF0) == 0xE0) {
         // 3-byte sequence
         if (index + 2 < text.length()) {
-            codepoint = ((c & 0x0F) << 12) | 
+            codepoint = static_cast<unsigned int>(((c & 0x0F) << 12) | 
                        ((text[index + 1] & 0x3F) << 6) | 
-                       (text[index + 2] & 0x3F);
+                       (text[index + 2] & 0x3F));
             index += 3;
         } else {
             index += 1; // Invalid sequence
@@ -380,10 +380,10 @@ static unsigned int decode_utf8(const std::string& text, size_t& index) {
     } else if ((c & 0xF8) == 0xF0) {
         // 4-byte sequence
         if (index + 3 < text.length()) {
-            codepoint = ((c & 0x07) << 18) | 
+            codepoint = static_cast<unsigned int>(((c & 0x07) << 18) | 
                        ((text[index + 1] & 0x3F) << 12) | 
                        ((text[index + 2] & 0x3F) << 6) | 
-                       (text[index + 3] & 0x3F);
+                       (text[index + 3] & 0x3F));
             index += 4;
         } else {
             index += 1; // Invalid sequence
@@ -511,7 +511,7 @@ void FontSystem::render_text(CanvasRenderer* renderer, const std::string& text,
     if (!blend_enabled) {
         glDisable(GL_BLEND);
     }
-    glBlendFunc(blend_src, blend_dst);
+    glBlendFunc(static_cast<GLenum>(blend_src), static_cast<GLenum>(blend_dst));
 }
 
 bool FontSystem::load_default_fonts() {
@@ -612,9 +612,9 @@ void main() {
     }
     
     // Get uniform locations
-    projection_uniform_ = glGetUniformLocation(text_shader_program_, "projection");
-    text_color_uniform_ = glGetUniformLocation(text_shader_program_, "textColor");
-    texture_uniform_ = glGetUniformLocation(text_shader_program_, "text");
+    projection_uniform_ = static_cast<unsigned int>(glGetUniformLocation(text_shader_program_, "projection"));
+    text_color_uniform_ = static_cast<unsigned int>(glGetUniformLocation(text_shader_program_, "textColor"));
+    texture_uniform_ = static_cast<unsigned int>(glGetUniformLocation(text_shader_program_, "text"));
     
     // Clean up
     glDeleteShader(vertex_shader);
@@ -634,7 +634,7 @@ void FontSystem::setup_render_buffers() {
     
     // Setup vertex attributes (position + tex coords)
     glEnableVertexAttribArray(0);
-    glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, sizeof(GlyphVertex), (void*)0);
+    glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, sizeof(GlyphVertex), reinterpret_cast<void*>(0));
     
     glBindBuffer(GL_ARRAY_BUFFER, 0);
     glBindVertexArray(0);
@@ -691,7 +691,7 @@ void FontSystem::flush_batch(CanvasRenderer* renderer, unsigned int texture_id, 
         // Get projection matrix from renderer
         float projection[16];
         renderer->get_projection_matrix(projection);
-        glUniformMatrix4fv(projection_uniform_, 1, GL_FALSE, projection);
+        glUniformMatrix4fv(static_cast<GLint>(projection_uniform_), 1, GL_FALSE, projection);
     } else {
         // Create orthographic projection for screen space
         float width = 1920.0f;  // Default screen width
@@ -702,11 +702,11 @@ void FontSystem::flush_batch(CanvasRenderer* renderer, unsigned int texture_id, 
             0.0f,        0.0f,         -1.0f, 0.0f,
             -1.0f,       1.0f,         0.0f, 1.0f
         };
-        glUniformMatrix4fv(projection_uniform_, 1, GL_FALSE, projection);
+        glUniformMatrix4fv(static_cast<GLint>(projection_uniform_), 1, GL_FALSE, projection);
     }
     
-    glUniform4f(text_color_uniform_, color.r, color.g, color.b, color.a);
-    glUniform1i(texture_uniform_, 0);
+    glUniform4f(static_cast<GLint>(text_color_uniform_), color.r, color.g, color.b, color.a);
+    glUniform1i(static_cast<GLint>(texture_uniform_), 0);
     
     // Bind texture
     glActiveTexture(GL_TEXTURE0);
@@ -715,15 +715,15 @@ void FontSystem::flush_batch(CanvasRenderer* renderer, unsigned int texture_id, 
     // Upload vertex data
     glBindVertexArray(text_vao_);
     glBindBuffer(GL_ARRAY_BUFFER, text_vbo_);
-    glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(GlyphVertex) * vertex_batch_.size(), vertex_batch_.data());
+    glBufferSubData(GL_ARRAY_BUFFER, 0, static_cast<GLsizeiptr>(sizeof(GlyphVertex) * vertex_batch_.size()), vertex_batch_.data());
     
     // Draw
-    glDrawArrays(GL_TRIANGLES, 0, vertex_batch_.size());
+    glDrawArrays(GL_TRIANGLES, 0, static_cast<GLsizei>(vertex_batch_.size()));
     
     // Restore previous GL state
-    glBindVertexArray(current_vao);
-    glBindTexture(GL_TEXTURE_2D, current_texture);
-    glUseProgram(current_program);
+    glBindVertexArray(static_cast<GLuint>(current_vao));
+    glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(current_texture));
+    glUseProgram(static_cast<GLuint>(current_program));
     
     // Clear batch
     vertex_batch_.clear();
@@ -757,7 +757,7 @@ void FontSystem::create_texture_atlas() {
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     
     // Allocate empty texture (single channel for glyphs)
-    std::vector<unsigned char> empty_data(atlas_->width * atlas_->height, 0);
+    std::vector<unsigned char> empty_data(static_cast<size_t>(atlas_->width * atlas_->height), 0);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, 
                 atlas_->width, atlas_->height, 
                 0, GL_RED, GL_UNSIGNED_BYTE, 

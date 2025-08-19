@@ -454,7 +454,7 @@ private:
         add_child(LayoutBuilder::spacer());
     }
     
-    void show_dropdown_menu(const std::vector<MenuItem>& items) {
+    void show_dropdown_menu([[maybe_unused]] const std::vector<MenuItem>& items) {
         // TODO: Implement dropdown menu display
     }
     

@@ -71,14 +71,14 @@ void StyledWidget::invalidate_style() {
     // Otherwise, defer the dirty marking until block resolution
 }
 
-void StyledWidget::set_style_json(const std::string& json) {
+void StyledWidget::set_style_json([[maybe_unused]] const std::string& json) {
     // TODO: Implement JSON parsing
     // For now, this is a placeholder
     invalidate_style();
     invalidate_layout();
 }
 
-void StyledWidget::set_style_property(const std::string& property, const std::string& value) {
+void StyledWidget::set_style_property([[maybe_unused]] const std::string& property, [[maybe_unused]] const std::string& value) {
     // TODO: Implement property setting
     invalidate_style();
     invalidate_layout();
@@ -268,9 +268,9 @@ StyledWidget::IntrinsicSizes StyledWidget::calculate_intrinsic_sizes() {
     }
     
     // Check if we're a flex item with flex-grow > 0
-    bool is_flex_item = false;
-    bool parent_is_row = false;
-    bool parent_is_column = false;
+    [[maybe_unused]] bool is_flex_item = false;
+    [[maybe_unused]] bool parent_is_row = false;
+    [[maybe_unused]] bool parent_is_column = false;
     
     if (parent_ && parent_->get_computed_style().display == WidgetStyle::Display::Flex) {
         is_flex_item = true;
@@ -403,7 +403,7 @@ StyledWidget::IntrinsicSizes StyledWidget::calculate_intrinsic_sizes() {
 // Resolve actual sizes (Pass 2 - top-down)
 void StyledWidget::resolve_sizes(float available_width, float available_height) {
     // Use intrinsic sizes as a starting point
-    IntrinsicSizes intrinsic = calculate_intrinsic_sizes();
+    [[maybe_unused]] IntrinsicSizes intrinsic = calculate_intrinsic_sizes();
     
     // Debug after resize
     if (has_resized_3 && (id_ == "dock-container-left" || id_ == "dock-container-right")) {
@@ -862,7 +862,7 @@ void StyledWidget::render_border(CanvasRenderer* renderer) {
     }
 }
 
-void StyledWidget::render_content(CanvasRenderer* renderer) {
+void StyledWidget::render_content([[maybe_unused]] CanvasRenderer* renderer) {
     // Base class has no content
     // Subclasses override this
 }
@@ -1085,7 +1085,7 @@ bool StyledWidget::handle_event(const InputEvent& event) {
     // Update hover state - ALWAYS update, not just when state changes
     // This ensures widgets lose hover when mouse moves away quickly
     if (event.type == EventType::MOUSE_MOVE) {
-        bool was_hovered = is_hovered();
+        [[maybe_unused]] bool was_hovered = is_hovered();
         
         
         // If mouse is not in bounds, always clear hover
@@ -1170,7 +1170,7 @@ void StyledWidget::perform_layout() {
     
     // Multi-pass layout system:
     // Pass 1: Calculate intrinsic sizes (bottom-up)
-    IntrinsicSizes intrinsic = calculate_intrinsic_sizes();
+    [[maybe_unused]] IntrinsicSizes intrinsic = calculate_intrinsic_sizes();
     
     // Pass 2: Resolve sizes based on constraints
     // Determine available space based on parent and our size unit
@@ -1459,7 +1459,7 @@ void StyledWidget::layout_inline() {
                             FontFace* font = g_font_system->get_font(
                                 item_style.font_family.empty() ? "default" : item_style.font_family
                             );
-                            float ascender = font ? font->get_ascender(item_style.font_size_pixels) : 0;
+                            float ascender = font ? font->get_ascender(static_cast<int>(item_style.font_size_pixels)) : 0;
                             
                             // Position so text baseline aligns with line baseline
                             // Line baseline is at: y + line_height - descender_space
@@ -2080,7 +2080,7 @@ void StyledWidget::position_flex_line(const FlexLine& line, const Rect2D& conten
                         FontFace* font = g_font_system->get_font(
                             item_style.font_family.empty() ? "default" : item_style.font_family
                         );
-                        float ascender = font ? font->get_ascender(item_style.font_size_pixels) : 0;
+                        float ascender = font ? font->get_ascender(static_cast<int>(item_style.font_size_pixels)) : 0;
                         item_cross_pos = baseline_y - ascender;
                     } else {
                         item_cross_pos = baseline_y - item->cross_size;
@@ -2318,7 +2318,7 @@ void StyledWidget::position_flex_items(const std::vector<FlexItem>& items) {
                         FontFace* font = g_font_system->get_font(
                             item_style.font_family.empty() ? "default" : item_style.font_family
                         );
-                        float ascender = font ? font->get_ascender(item_style.font_size_pixels) : 0;
+                        float ascender = font ? font->get_ascender(static_cast<int>(item_style.font_size_pixels)) : 0;
                         cross_pos = baseline_y - ascender;
                     } else {
                         // For non-text, align bottom to baseline
@@ -2556,9 +2556,9 @@ void StyledWidget::layout_grid() {
             cell.col_span = area_bounds[3] - area_bounds[1];
             
             // Mark cells as occupied
-            for (int r = cell.row; r < std::min((int)num_rows, cell.row + cell.row_span); ++r) {
-                for (int c = cell.col; c < std::min((int)num_cols, cell.col + cell.col_span); ++c) {
-                    occupied[r][c] = true;
+            for (int r = cell.row; r < std::min(static_cast<int>(num_rows), cell.row + cell.row_span); ++r) {
+                for (int c = cell.col; c < std::min(static_cast<int>(num_cols), cell.col + cell.col_span); ++c) {
+                    occupied[static_cast<size_t>(r)][static_cast<size_t>(c)] = true;
                 }
             }
             
@@ -2574,9 +2574,9 @@ void StyledWidget::layout_grid() {
                            child_style.grid_row_end - child_style.grid_row_start : 1;
             
             // Mark cells as occupied
-            for (int r = cell.row; r < std::min((int)num_rows, cell.row + cell.row_span); ++r) {
-                for (int c = cell.col; c < std::min((int)num_cols, cell.col + cell.col_span); ++c) {
-                    occupied[r][c] = true;
+            for (int r = cell.row; r < std::min(static_cast<int>(num_rows), cell.row + cell.row_span); ++r) {
+                for (int c = cell.col; c < std::min(static_cast<int>(num_cols), cell.col + cell.col_span); ++c) {
+                    occupied[static_cast<size_t>(r)][static_cast<size_t>(c)] = true;
                 }
             }
             
@@ -2614,7 +2614,7 @@ void StyledWidget::layout_grid() {
         // Find next empty cell
         bool found = false;
         while (!found) {
-            if (auto_row >= (int)num_rows) {
+            if (auto_row >= static_cast<int>(num_rows)) {
                 // Need to add more rows - use grid_auto_rows
                 float auto_row_size = 100;  // Default
                 if (computed_style_.grid_template_rows.size() > 0) {
@@ -2627,26 +2627,26 @@ void StyledWidget::layout_grid() {
                 num_rows++;
             }
             
-            if (!occupied[auto_row][auto_col]) {
+            if (!occupied[static_cast<size_t>(auto_row)][static_cast<size_t>(auto_col)]) {
                 cell.col = auto_col;
                 cell.row = auto_row;
-                occupied[auto_row][auto_col] = true;
+                occupied[static_cast<size_t>(auto_row)][static_cast<size_t>(auto_col)] = true;
                 found = true;
             }
             
             // Move to next cell
             if (row_flow) {
                 auto_col++;
-                if (auto_col >= (int)num_cols) {
+                if (auto_col >= static_cast<int>(num_cols)) {
                     auto_col = 0;
                     auto_row++;
                 }
             } else {
                 auto_row++;
-                if (auto_row >= (int)num_rows) {
+                if (auto_row >= static_cast<int>(num_rows)) {
                     auto_row = 0;
                     auto_col++;
-                    if (auto_col >= (int)num_cols) {
+                    if (auto_col >= static_cast<int>(num_cols)) {
                         // Need to add more columns
                         column_sizes.push_back(100);  // Default size
                         for (auto& row : occupied) {
@@ -2672,17 +2672,17 @@ void StyledWidget::layout_grid() {
             
             // Find item at this cell
             for (const auto& cell : placed_items) {
-                if (cell.col == (int)col && cell.row == (int)row) {
+                if (cell.col == static_cast<int>(col) && cell.row == static_cast<int>(row)) {
                     // Calculate cell bounds
                     float cell_width = col_width;
                     float cell_height = row_height;
                     
                     // Add span sizes
-                    for (int c = 1; c < cell.col_span && col + c < num_cols; ++c) {
-                        cell_width += column_sizes[col + c] + computed_style_.column_gap_pixels;
+                    for (int c = 1; c < cell.col_span && col + static_cast<size_t>(c) < num_cols; ++c) {
+                        cell_width += column_sizes[col + static_cast<size_t>(c)] + computed_style_.column_gap_pixels;
                     }
-                    for (int r = 1; r < cell.row_span && row + r < num_rows; ++r) {
-                        cell_height += row_sizes[row + r] + computed_style_.row_gap_pixels;
+                    for (int r = 1; r < cell.row_span && row + static_cast<size_t>(r) < num_rows; ++r) {
+                        cell_height += row_sizes[row + static_cast<size_t>(r)] + computed_style_.row_gap_pixels;
                     }
                     
                     // Apply alignment within cell

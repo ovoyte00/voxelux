@@ -110,7 +110,7 @@ private:
     bool should_handle_event(const ContextualInputHandler* handler, const InputEvent& event) const;
     void log_event(const InputEvent& event, const std::string& handler_name, EventResult result) const;
     
-    CanvasWindow* window_;
+    [[maybe_unused]] CanvasWindow* window_;
     
     // Handler chains
     std::vector<std::shared_ptr<ContextualInputHandler>> handlers_;
@@ -170,7 +170,7 @@ private:
     bool handle_region_split(const InputEvent& event);
     bool is_on_region_splitter(const Point2D& point) const;
     
-    CanvasWindow* window_;
+    [[maybe_unused]] CanvasWindow* window_;
     CanvasRegion* active_region_ = nullptr;
     bool is_resizing_ = false;
     Point2D resize_start_pos_;

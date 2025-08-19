@@ -206,9 +206,9 @@ bool PolylineShader::initialize() {
     
     // Setup vertex attributes: position (3 floats) + color (4 floats)
     glEnableVertexAttribArray(0);
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 7 * sizeof(float), (void*)0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 7 * sizeof(float), reinterpret_cast<void*>(0));
     glEnableVertexAttribArray(1);
-    glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, 7 * sizeof(float), (void*)(3 * sizeof(float)));
+    glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, 7 * sizeof(float), reinterpret_cast<void*>(3 * sizeof(float)));
     
     glBindVertexArray(0);
     
@@ -292,9 +292,9 @@ void PolylineShader::draw_lines(const std::vector<LineVertex>& lines) {
     
     glBindVertexArray(vao_);
     glBindBuffer(GL_ARRAY_BUFFER, vbo_);
-    glBufferData(GL_ARRAY_BUFFER, lines.size() * sizeof(LineVertex), lines.data(), GL_DYNAMIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(lines.size() * sizeof(LineVertex)), lines.data(), GL_DYNAMIC_DRAW);
     
-    glDrawArrays(GL_LINES, 0, lines.size());
+    glDrawArrays(GL_LINES, 0, static_cast<GLsizei>(lines.size()));
     
     glBindVertexArray(0);
 }

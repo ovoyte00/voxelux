@@ -398,7 +398,7 @@ private:
         
         if (!list_bounds.contains(point)) return -1;
         
-        int index = (point.y - list_bounds.y) / 24;
+        int index = static_cast<int>((point.y - list_bounds.y) / 24);
         if (index >= 0 && index < options_.size()) {
             return index;
         }

@@ -100,7 +100,7 @@ public:
         std::cout << "Press ESC or close window to exit." << std::endl;
         
         // Track frame timing for consistent updates
-        auto last_frame_time{std::chrono::high_resolution_clock::now()};
+        [[maybe_unused]] auto last_frame_time{std::chrono::high_resolution_clock::now()};
         const auto target_frame_time{std::chrono::milliseconds(16)}; // ~60 FPS
         
         // Track size for detecting changes
@@ -196,7 +196,7 @@ private:
                 : ContextualInputHandler(InputContext::UI_WIDGET, 100)  // High priority for UI
                 , layout_(layout) {}
             
-            bool can_handle(const InputEvent& event) const override {
+            bool can_handle([[maybe_unused]] const InputEvent& event) const override {
                 // Layout can potentially handle all events
                 return layout_ != nullptr;
             }
@@ -253,7 +253,7 @@ private:
     std::unique_ptr<VoxeluxLayout> layout_;
 };
 
-int main(int argc, char* argv[]) {
+int main([[maybe_unused]] int argc, [[maybe_unused]] char* argv[]) {
     std::cout << "Voxelux v0.1.0 - Professional Voxel Editor" << std::endl;
     std::cout << "Copyright (C) 2024 Voxelux. All rights reserved." << std::endl;
     std::cout << std::endl;

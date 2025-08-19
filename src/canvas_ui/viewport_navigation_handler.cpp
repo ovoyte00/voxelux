@@ -44,14 +44,14 @@ void ViewportNavigationHandler::bind_camera(Camera3D* camera) {
     camera_ = camera;
     if (navigator_ && camera_) {
         // Initialize navigator with camera and viewport
-        navigator_->initialize(camera_, viewport_bounds_.width, viewport_bounds_.height);
+        navigator_->initialize(camera_, static_cast<int>(viewport_bounds_.width), static_cast<int>(viewport_bounds_.height));
     }
 }
 
 void ViewportNavigationHandler::set_viewport_bounds(const Rect2D& bounds) {
     viewport_bounds_ = bounds;
     if (navigator_) {
-        navigator_->set_viewport_size(bounds.width, bounds.height);
+        navigator_->set_viewport_size(static_cast<int>(bounds.width), static_cast<int>(bounds.height));
     }
 }
 
@@ -467,17 +467,17 @@ EventResult ViewportNavigationHandler::handle_event(const InputEvent& event) {
     return EventResult::IGNORED;
 }
 
-bool ViewportNavigationHandler::handle_mouse_event(const InputEvent& event) {
+bool ViewportNavigationHandler::handle_mouse_event([[maybe_unused]] const InputEvent& event) {
     // This is now handled in handle_event directly
     return false;
 }
 
-bool ViewportNavigationHandler::handle_trackpad_event(const voxelux::core::events::TrackpadEvent& event) {
+bool ViewportNavigationHandler::handle_trackpad_event([[maybe_unused]] const voxelux::core::events::TrackpadEvent& event) {
     // This is now handled in handle_event directly
     return false;
 }
 
-bool ViewportNavigationHandler::handle_smart_mouse_event(const voxelux::core::events::SmartMouseEvent& event) {
+bool ViewportNavigationHandler::handle_smart_mouse_event([[maybe_unused]] const voxelux::core::events::SmartMouseEvent& event) {
     // Not implemented yet
     return false;
 }
@@ -540,18 +540,18 @@ void ViewportNavigationHandler::end_navigation() {
 }
 
 // Stub implementations for removed methods (for compatibility)
-void ViewportNavigationHandler::handle_orbit(const Point2D& current_pos, const Point2D& delta) {}
-void ViewportNavigationHandler::handle_pan(const Point2D& current_pos, const Point2D& delta) {}
-void ViewportNavigationHandler::handle_pan_with_source(const Point2D& current_pos, const Point2D& delta, EventType source) {}
-void ViewportNavigationHandler::handle_pan_simple(const Point2D& current_pos, const Point2D& delta) {}
-void ViewportNavigationHandler::handle_zoom(float zoom_delta, const Point2D& mouse_pos) {}
-void ViewportNavigationHandler::handle_dolly(const Point2D& current_pos, const Point2D& delta) {}
+void ViewportNavigationHandler::handle_orbit([[maybe_unused]] const Point2D& current_pos, [[maybe_unused]] const Point2D& delta) {}
+void ViewportNavigationHandler::handle_pan([[maybe_unused]] const Point2D& current_pos, [[maybe_unused]] const Point2D& delta) {}
+void ViewportNavigationHandler::handle_pan_with_source([[maybe_unused]] const Point2D& current_pos, [[maybe_unused]] const Point2D& delta, [[maybe_unused]] EventType source) {}
+void ViewportNavigationHandler::handle_pan_simple([[maybe_unused]] const Point2D& current_pos, [[maybe_unused]] const Point2D& delta) {}
+void ViewportNavigationHandler::handle_zoom([[maybe_unused]] float zoom_delta, [[maybe_unused]] const Point2D& mouse_pos) {}
+void ViewportNavigationHandler::handle_dolly([[maybe_unused]] const Point2D& current_pos, [[maybe_unused]] const Point2D& delta) {}
 void ViewportNavigationHandler::reset_pan_state() {}
 
 // Debug methods implementation
 void ViewportNavigationHandler::print_current_state() const {
-    const char* mode_str = get_mode_string();
-    const char* device_str = "Unknown";
+    [[maybe_unused]] const char* mode_str = get_mode_string();
+    [[maybe_unused]] const char* device_str = "Unknown";
     
     switch (input_device_) {
         case InputDevice::Mouse: device_str = "Mouse"; break;
@@ -564,7 +564,7 @@ void ViewportNavigationHandler::print_current_state() const {
     
     if (navigator_) {
         auto nav_mode = navigator_->get_mode();
-        const char* nav_mode_str = "NONE";
+        [[maybe_unused]] const char* nav_mode_str = "NONE";
         switch (nav_mode) {
             case voxelux::canvas_ui::ViewportNavigator::NavigationMode::PAN:
                 nav_mode_str = "PAN";

@@ -18,7 +18,7 @@ namespace voxel_canvas {
 
 // Forward declarations
 class CanvasRenderer;
-class InputEvent;
+struct InputEvent;
 class RenderBlock;
 
 /**
@@ -125,9 +125,9 @@ protected:
     // Event handlers (override these for custom behavior)
     virtual void on_mouse_enter() {}
     virtual void on_mouse_leave() {}
-    virtual void on_mouse_press(const InputEvent& event) {}
-    virtual void on_mouse_release(const InputEvent& event) {}
-    virtual void on_mouse_move(const InputEvent& event) {}
+    virtual void on_mouse_press([[maybe_unused]] const InputEvent& event) {}
+    virtual void on_mouse_release([[maybe_unused]] const InputEvent& event) {}
+    virtual void on_mouse_move([[maybe_unused]] const InputEvent& event) {}
     
     // Layout management - Multi-pass system
     void perform_layout();  // Recursively layout this widget and children
@@ -278,7 +278,7 @@ public:
     std::string get_widget_type() const override { return "spacer"; }
     
 protected:
-    void render_content(CanvasRenderer* renderer) override {
+    void render_content([[maybe_unused]] CanvasRenderer* renderer) override {
         // Spacers don't render anything
     }
 };

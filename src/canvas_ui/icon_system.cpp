@@ -22,14 +22,29 @@
 
 // For SVG rasterization using NanoSVG
 // NanoSVG - zlib License (no attribution required)
+// Disable warnings for third-party headers
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wold-style-cast"
+#pragma GCC diagnostic ignored "-Wshadow"
+#pragma GCC diagnostic ignored "-Wdouble-promotion"
+#pragma GCC diagnostic ignored "-Wimplicit-int-conversion"
+#pragma GCC diagnostic ignored "-Wunused-parameter"
+#pragma GCC diagnostic ignored "-Wsign-conversion"
+#pragma GCC diagnostic ignored "-Wimplicit-float-conversion"
+#pragma GCC diagnostic ignored "-Wfloat-conversion"
+#pragma GCC diagnostic ignored "-Wcast-align"
 #define NANOSVG_IMPLEMENTATION
 #include "../../lib/third_party/nanosvg.h"
 #define NANOSVGRAST_IMPLEMENTATION  
 #include "../../lib/third_party/nanosvgrast.h"
+#pragma GCC diagnostic pop
 
 // For texture atlas packing
 // rectpack2D - MIT License, Copyright (c) 2016 Patryk Nadrowski
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wsign-conversion"
 #include "../../lib/third_party/rectpack2D/finders_interface.h"
+#pragma GCC diagnostic pop
 
 namespace voxel_canvas {
 
@@ -83,11 +98,11 @@ bool IconAsset::load_from_svg(const std::string& svg_path) {
         return false;
     }
     
-    size_t size = file.tellg();
+    size_t size = static_cast<size_t>(file.tellg());
     file.seekg(0, std::ios::beg);
     
     svg_data_.resize(size + 1); // +1 for null terminator
-    file.read(reinterpret_cast<char*>(svg_data_.data()), size);
+    file.read(reinterpret_cast<char*>(svg_data_.data()), static_cast<std::streamsize>(size));
     svg_data_[size] = '\0'; // Null terminate for NanoSVG
     
     // Replace currentColor with white (will be tinted during rendering)
@@ -196,7 +211,7 @@ bool IconAsset::rasterize_svg(int target_size) {
     int height = target_size; // Force square for consistency
     
     // Allocate buffer for rasterization (initialize to transparent)
-    std::vector<uint8_t> pixels(width * height * 4, 0);
+    std::vector<uint8_t> pixels(static_cast<size_t>(width * height * 4), 0);
     
     // Rasterize SVG
     nsvgRasterize(svg_rasterizer_, svg_image_, 0, 0, scale,
@@ -208,7 +223,7 @@ bool IconAsset::rasterize_svg(int target_size) {
     for (size_t i = 0; i < pixels.size(); i += 4) {
         if (pixels[i] > 0 || pixels[i+1] > 0 || pixels[i+2] > 0 || pixels[i+3] > 0) {
             non_zero_count++;
-            max_alpha = std::max(max_alpha, (int)pixels[i+3]);
+            max_alpha = std::max(max_alpha, static_cast<int>(pixels[i+3]));
         }
     }
     
@@ -226,10 +241,10 @@ bool IconAsset::rasterize_svg(int target_size) {
                 int idx = (y * width + x) * 4;
                 bool checker = ((x / 4) + (y / 4)) % 2;
                 uint8_t color = checker ? 255 : 128;
-                pixels[idx] = color;     // R
-                pixels[idx + 1] = color; // G
-                pixels[idx + 2] = color; // B
-                pixels[idx + 3] = 255;   // A
+                pixels[static_cast<size_t>(idx)] = color;     // R
+                pixels[static_cast<size_t>(idx + 1)] = color; // G
+                pixels[static_cast<size_t>(idx + 2)] = color; // B
+                pixels[static_cast<size_t>(idx + 3)] = 255;   // A
             }
         }
     }
@@ -265,7 +280,7 @@ bool IconAsset::create_texture(const uint8_t* pixels, int width, int height, int
     
     // Upload texture data
     GLenum format = (channels == 4) ? GL_RGBA : GL_RGB;
-    glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0, format, GL_UNSIGNED_BYTE, pixels);
+    glTexImage2D(GL_TEXTURE_2D, 0, static_cast<GLint>(format), width, height, 0, format, GL_UNSIGNED_BYTE, pixels);
     
     GLenum error = glGetError();
     if (error != GL_NO_ERROR) {
@@ -311,7 +326,7 @@ void IconAsset::render(CanvasRenderer* renderer, const Point2D& position, float 
 
 
 
-void IconAsset::prerender_at_size(CanvasRenderer* renderer, float size) {
+void IconAsset::prerender_at_size([[maybe_unused]] CanvasRenderer* renderer, float size) {
     // Pre-render SVG at specific size for faster display
     // NOTE: Size should be pre-scaled from ScaledTheme
     if (is_svg_) {
@@ -413,7 +428,7 @@ void IconSystem::evict_old_cache_entries() {
     size_t total_size = 0;
     for (const auto& [key, cached] : size_cache_) {
         // Estimate: 4 bytes per pixel
-        total_size += cached.width * cached.height * 4;
+        total_size += static_cast<size_t>(cached.width * cached.height * 4);
     }
     
     size_t max_size_bytes = MAX_CACHE_SIZE_MB * 1024 * 1024;
@@ -441,7 +456,7 @@ void IconSystem::evict_old_cache_entries() {
             auto it = size_cache_.find(key);
             if (it != size_cache_.end()) {
                 glDeleteTextures(1, &it->second.texture_id);
-                removed_size += it->second.width * it->second.height * 4;
+                removed_size += static_cast<size_t>(it->second.width * it->second.height * 4);
                 size_cache_.erase(it);
             }
         }
@@ -603,7 +618,7 @@ void IconSystem::load_builtin_icons() {
         std::vector<uint8_t> pixels(32 * 32 * 4);
         
         // Generate a unique color for each icon type
-        uint32_t hash = std::hash<std::string>{}(icon_name);
+        uint32_t hash = static_cast<uint32_t>(std::hash<std::string>{}(icon_name));
         uint8_t r = (hash >> 16) & 0xFF;
         uint8_t g = (hash >> 8) & 0xFF;
         uint8_t b = hash & 0xFF;

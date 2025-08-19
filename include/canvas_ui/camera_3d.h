@@ -130,8 +130,8 @@ struct Matrix4x4 {
     // Data access
     const float* data() const { return &m[0][0]; }
     float* data() { return &m[0][0]; }
-    float& operator()(int row, int col) { return m[row][col]; }
-    const float& operator()(int row, int col) const { return m[row][col]; }
+    float& operator()(int row, int col) { return m[static_cast<size_t>(row)][static_cast<size_t>(col)]; }
+    const float& operator()(int row, int col) const { return m[static_cast<size_t>(row)][static_cast<size_t>(col)]; }
 };
 
 /**

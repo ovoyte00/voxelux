@@ -53,8 +53,6 @@ void EditorSplitView::render(CanvasRenderer* renderer) {
 bool EditorSplitView::handle_event(const InputEvent& event) {
     // Handle resize handle interaction
     if (split_type_ != SplitType::NONE) {
-        Rect2D handle_bounds = get_resize_handle_bounds();
-        
         if (event.type == EventType::MOUSE_PRESS && event.mouse_button == MouseButton::LEFT) {
             if (is_over_resize_handle(event.mouse_pos)) {
                 is_resizing_ = true;
@@ -313,7 +311,7 @@ void EditorSplitView::render_resize_handle(CanvasRenderer* renderer) {
     }
 }
 
-void EditorSplitView::render_split_indicator(CanvasRenderer* renderer, Point2D position) {
+void EditorSplitView::render_split_indicator([[maybe_unused]] CanvasRenderer* renderer, [[maybe_unused]] Point2D position) {
     // TODO: Render split preview indicator
 }
 

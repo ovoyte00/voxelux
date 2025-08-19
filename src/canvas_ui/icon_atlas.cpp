@@ -98,7 +98,7 @@ void IconAtlas::clear() {
     row_height_ = 0;
     
     // Clear texture to transparent
-    std::vector<uint8_t> clear_data(atlas_width_ * atlas_height_ * 4, 0);
+    std::vector<uint8_t> clear_data(static_cast<size_t>(atlas_width_ * atlas_height_ * 4), 0);
     glBindTexture(GL_TEXTURE_2D, texture_id_);
     glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, atlas_width_, atlas_height_,
                     GL_RGBA, GL_UNSIGNED_BYTE, clear_data.data());

@@ -529,8 +529,8 @@ public:
             return g;
         }
         
-        Gradient& add_stop(const ColorValue& color, float position) {
-            stops.emplace_back(color, position);
+        Gradient& add_stop(const ColorValue& color, float stop_position) {
+            stops.emplace_back(color, stop_position);
             return *this;
         }
         

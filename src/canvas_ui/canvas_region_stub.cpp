@@ -19,16 +19,16 @@ public:
         return "Stub Editor";
     }
     
-    void render(CanvasRenderer* renderer, const Rect2D& bounds) override {
+    void render([[maybe_unused]] CanvasRenderer* renderer, [[maybe_unused]] const Rect2D& bounds) override {
         // TODO: Implement when migrated to new widget system
     }
     
-    bool handle_event(const InputEvent& event, const Rect2D& bounds) override {
+    bool handle_event([[maybe_unused]] const InputEvent& event, [[maybe_unused]] const Rect2D& bounds) override {
         // TODO: Implement when migrated to new widget system
         return false;
     }
     
-    void update(float delta_time) override {}
+    void update([[maybe_unused]] float delta_time) override {}
 };
 
 // EditorSpace base class constructor
@@ -117,7 +117,7 @@ bool CanvasRegion::can_resize_to(const Rect2D& new_bounds) const {
     return new_bounds.width >= min_size.x && new_bounds.height >= min_size.y;
 }
 
-void CanvasRegion::split_region(bool horizontal, float ratio) {
+void CanvasRegion::split_region([[maybe_unused]] bool horizontal, [[maybe_unused]] float ratio) {
     // TODO: Implement when migrated to new widget system
 }
 
@@ -125,11 +125,11 @@ void CanvasRegion::update_children_bounds() {
     // TODO: Implement when migrated to new widget system
 }
 
-void CanvasRegion::render_resize_handles(CanvasRenderer* renderer) {
+void CanvasRegion::render_resize_handles([[maybe_unused]] CanvasRenderer* renderer) {
     // TODO: Implement when migrated to new widget system
 }
 
-bool CanvasRegion::is_point_on_splitter(const Point2D& point) const {
+bool CanvasRegion::is_point_on_splitter([[maybe_unused]] const Point2D& point) const {
     // TODO: Implement when migrated to new widget system
     return false;
 }
@@ -138,7 +138,7 @@ void CanvasRegion::setup_editor_dropdown() {
     // TODO: Implement when migrated to new widget system
 }
 
-void CanvasRegion::on_editor_type_changed(EditorType new_type) {
+void CanvasRegion::on_editor_type_changed([[maybe_unused]] EditorType new_type) {
     // TODO: Implement when migrated to new widget system
 }
 

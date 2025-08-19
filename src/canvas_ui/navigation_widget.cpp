@@ -127,9 +127,9 @@ void main() {
     
     // Setup vertex attributes: position (2 floats) + color (4 floats)
     glEnableVertexAttribArray(0);
-    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)0);
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 6 * sizeof(float), reinterpret_cast<void*>(0));
     glEnableVertexAttribArray(1);
-    glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)(2 * sizeof(float)));
+    glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, 6 * sizeof(float), reinterpret_cast<void*>(2 * sizeof(float)));
     
     glBindBuffer(GL_ARRAY_BUFFER, 0);
     glBindVertexArray(0);
@@ -162,7 +162,7 @@ void NavigationWidget::calculate_view_ordering(const Camera3D& camera) {
     glm::mat4 view(1.0f);
     for (int i = 0; i < 4; i++) {
         for (int j = 0; j < 4; j++) {
-            view[i][j] = view_matrix.m[j][i]; // Transpose for column-major
+            view[i][j] = view_matrix.m[static_cast<size_t>(j)][static_cast<size_t>(i)]; // Transpose for column-major
         }
     }
     
@@ -205,30 +205,30 @@ void NavigationWidget::calculate_view_ordering(const Camera3D& camera) {
         glm::vec4 transformed = rotation_only * pos;
         
         // Update sphere position to view space
-        axis_spheres_[i].position = {transformed.x, transformed.y, transformed.z};
-        axis_spheres_[i].depth = transformed.z;
+        axis_spheres_[static_cast<size_t>(i)].position = {transformed.x, transformed.y, transformed.z};
+        axis_spheres_[static_cast<size_t>(i)].depth = transformed.z;
         
-        min_depth = std::min(min_depth, axis_spheres_[i].depth);
-        max_depth = std::max(max_depth, axis_spheres_[i].depth);
+        min_depth = std::min(min_depth, axis_spheres_[static_cast<size_t>(i)].depth);
+        max_depth = std::max(max_depth, axis_spheres_[static_cast<size_t>(i)].depth);
     }
     
     // Set colors without depth fading - just use solid colors
     for (int i = 0; i < NUM_AXES; i++) {
         // Use full opacity for all spheres
-        axis_spheres_[i].alpha = 1.0f;
+        axis_spheres_[static_cast<size_t>(i)].alpha = 1.0f;
         
         // Store original axis color
-        axis_spheres_[i].color = (axis_spheres_[i].axis == 0) ? x_axis_color_ :
-                                (axis_spheres_[i].axis == 1) ? y_axis_color_ : z_axis_color_;
+        axis_spheres_[static_cast<size_t>(i)].color = (axis_spheres_[static_cast<size_t>(i)].axis == 0) ? x_axis_color_ :
+                                (axis_spheres_[static_cast<size_t>(i)].axis == 1) ? y_axis_color_ : z_axis_color_;
     }
     
     // Sort sphere indices by depth (back to front for proper blending)
     for (int i = 0; i < NUM_AXES; i++) {
-        sorted_sphere_indices_[i] = i;
+        sorted_sphere_indices_[static_cast<size_t>(i)] = i;
     }
     std::sort(sorted_sphere_indices_.begin(), sorted_sphere_indices_.end(),
              [this](int a, int b) {
-                 return axis_spheres_[a].depth < axis_spheres_[b].depth;
+                 return axis_spheres_[static_cast<size_t>(a)].depth < axis_spheres_[static_cast<size_t>(b)].depth;
              });
     
     // Update axis connectors (only positive axes have lines)
@@ -269,7 +269,7 @@ void NavigationWidget::calculate_view_ordering(const Camera3D& camera) {
         lines[i].width = line_thickness_;
         lines[i].depth = end_view.z;
         lines[i].axis_index = i * 2; // 0 for X, 2 for Y, 4 for Z (positive axes)
-        sorted_line_indices_[i] = i;
+        sorted_line_indices_[static_cast<size_t>(i)] = i;
     }
     
     // Sort by depth (back to front)
@@ -280,7 +280,7 @@ void NavigationWidget::calculate_view_ordering(const Camera3D& camera) {
     
     // Add sorted lines to render list
     for (int i = 0; i < 3; i++) {
-        axis_lines_.push_back(lines[sorted_line_indices_[i]]);
+        axis_lines_.push_back(lines[sorted_line_indices_[static_cast<size_t>(i)]]);
     }
 }
 
@@ -303,7 +303,7 @@ void NavigationWidget::render(CanvasRenderer* renderer, const Camera3D& camera, 
     // Position widget in logical coordinates (top-right corner)
     // Convert viewport size to logical coordinates for positioning
     float logical_viewport_width = viewport_size.x / ui_scale;
-    float logical_viewport_height = viewport_size.y / ui_scale;
+    [[maybe_unused]] float logical_viewport_height = viewport_size.y / ui_scale;
     
     float total_size = widget_size_ * 2.0f;  // Total widget area size
     position_.x = logical_viewport_width - margin_ - total_size;
@@ -332,18 +332,18 @@ void NavigationWidget::render(CanvasRenderer* renderer, const Camera3D& camera, 
     
     // Draw each axis completely in depth order
     for (int idx = 0; idx < NUM_AXES; idx++) {
-        int i = sorted_sphere_indices_[idx];
+        int i = sorted_sphere_indices_[static_cast<size_t>(idx)];
         draw_single_axis(renderer, i);
     }
     
     // Restore OpenGL state
     if (!blend_enabled) glDisable(GL_BLEND);
     if (depth_test_enabled) glEnable(GL_DEPTH_TEST);
-    glBlendFunc(blend_src, blend_dst);
+    glBlendFunc(static_cast<GLenum>(blend_src), static_cast<GLenum>(blend_dst));
 }
 
 void NavigationWidget::draw_single_axis(CanvasRenderer* renderer, int axis_index) {
-    const auto& sphere = axis_spheres_[axis_index];
+    const auto& sphere = axis_spheres_[static_cast<size_t>(axis_index)];
     
     float ui_scale = renderer->get_content_scale();
     
@@ -464,7 +464,7 @@ void NavigationWidget::draw_single_axis(CanvasRenderer* renderer, int axis_index
     float sphere_screen_radius = base_radius * depth_scale;
     float font_size = sphere_screen_radius * 1.25f;
     
-    Point2D text_size = g_font_system->measure_text(label, "Inter-Bold", font_size);
+    Point2D text_size = g_font_system->measure_text(label, "Inter-Bold", static_cast<int>(font_size));
     
     // Center text position
     Point2D text_pos(
@@ -485,7 +485,7 @@ void NavigationWidget::draw_single_axis(CanvasRenderer* renderer, int axis_index
         text_color = ColorRGBA(1.0f, 1.0f, 1.0f, 1.0f);
     }
     
-    g_font_system->render_text(renderer, label, text_pos, "Inter-Bold", font_size, text_color);
+    g_font_system->render_text(renderer, label, text_pos, "Inter-Bold", static_cast<int>(font_size), text_color);
 }
 
 void NavigationWidget::draw_widget_backdrop(CanvasRenderer* renderer) {
@@ -545,8 +545,8 @@ void NavigationWidget::draw_orientation_indicators(CanvasRenderer* renderer) {
     
     // Draw spheres in depth order (back to front)
     for (int idx = 0; idx < NUM_AXES; idx++) {
-        int i = sorted_sphere_indices_[idx];
-        const auto& sphere = axis_spheres_[i];
+        int i = sorted_sphere_indices_[static_cast<size_t>(idx)];
+        const auto& sphere = axis_spheres_[static_cast<size_t>(i)];
         
         // Draw all spheres regardless of alignment (no culling)
         
@@ -571,7 +571,7 @@ void NavigationWidget::draw_orientation_indicators(CanvasRenderer* renderer) {
         }
         
         // No depth fading, use original color
-        ColorRGBA base_color = sphere.color;
+        [[maybe_unused]] ColorRGBA base_color = sphere.color;
         
         if (!sphere.positive) {
             // Negative axes - hollow sphere with ring
@@ -628,7 +628,7 @@ void NavigationWidget::draw_axis_text(CanvasRenderer* renderer) {
     
     // Draw text labels for visible axis indicators
     for (int i = 0; i < NUM_AXES; i++) {
-        const auto& sphere = axis_spheres_[i];
+        const auto& sphere = axis_spheres_[static_cast<size_t>(i)];
         
         // For negative axes, only show text on hover
         if (!sphere.positive && i != hovered_axis_) {
@@ -658,7 +658,7 @@ void NavigationWidget::draw_axis_text(CanvasRenderer* renderer) {
         float sphere_screen_radius = 0.15f * widget_size_ * depth_scale;
         float font_size = sphere_screen_radius * 1.25f;  // Proportional to sphere size
         
-        Point2D text_size = g_font_system->measure_text(label, "Inter-Bold", font_size);
+        Point2D text_size = g_font_system->measure_text(label, "Inter-Bold", static_cast<int>(font_size));
         
         // Center text position mathematically
         // text_size.y is the full line height (ascender + |descender|)
@@ -683,7 +683,7 @@ void NavigationWidget::draw_axis_text(CanvasRenderer* renderer) {
         }
         
         // Main text (no shadow)
-        g_font_system->render_text(renderer, label, text_pos, "Inter-Bold", font_size, text_color);
+        g_font_system->render_text(renderer, label, text_pos, "Inter-Bold", static_cast<int>(font_size), text_color);
     }
 }
 
@@ -717,7 +717,7 @@ int NavigationWidget::hit_test(const Point2D& mouse_pos) const {
     int closest_sphere = -1;
     
     for (int i = 0; i < NUM_AXES; i++) {
-        const auto& sphere = axis_spheres_[i];
+        const auto& sphere = axis_spheres_[static_cast<size_t>(i)];
         
         // Calculate screen position of sphere (matching draw positioning)
         Point2D sphere_pos(
@@ -751,7 +751,7 @@ void NavigationWidget::handle_click(int axis_id) {
         return;
     }
     
-    const auto& sphere = axis_spheres_[axis_id];
+    const auto& sphere = axis_spheres_[static_cast<size_t>(axis_id)];
     
     
     // Call the callback if set
@@ -813,7 +813,7 @@ ColorRGBA NavigationWidget::calculate_depth_fade(const ColorRGBA& base_color, fl
     return result;
 }
 
-float NavigationWidget::calculate_size_from_depth(float base_size, float depth) {
+float NavigationWidget::calculate_size_from_depth(float base_size, [[maybe_unused]] float depth) {
     // No size scaling - return base size
     return base_size;
 }

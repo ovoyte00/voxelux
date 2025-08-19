@@ -139,8 +139,8 @@ public:
     std::shared_ptr<DockColumn> dock_panel(std::shared_ptr<Panel> panel, int column_index = -1) {
         std::shared_ptr<DockColumn> target_column;
         
-        if (column_index >= 0 && column_index < columns_.size()) {
-            target_column = columns_[column_index];
+        if (column_index >= 0 && static_cast<size_t>(column_index) < columns_.size()) {
+            target_column = columns_[static_cast<size_t>(column_index)];
         } else {
             // Find or create suitable column
             target_column = find_empty_column();
@@ -175,7 +175,7 @@ public:
         Rect2D preview_bounds;
     };
     
-    void handle_drop(const DragManager::DragData& drag_data, DropZone zone) {
+    void handle_drop([[maybe_unused]] const DragManager::DragData& drag_data, DropZone zone) {
         // Handle the drop based on zone
         switch (zone) {
             case DropZone::INTO_COLUMN:
@@ -190,7 +190,7 @@ public:
         }
     }
     
-    DropTarget get_drop_target(const Point2D& pos, bool is_tool_panel = false) const {
+    DropTarget get_drop_target(const Point2D& pos, [[maybe_unused]] bool is_tool_panel = false) const {
         DropTarget target;
         
         // Check each column
@@ -202,7 +202,7 @@ public:
             if (column_bounds.contains(pos)) {
                 target.zone = DropZone::INTO_COLUMN;
                 target.column = column;
-                target.index = i;
+                target.index = static_cast<int>(i);
                 
                 // TODO: Check for more specific drop zones within column
                 break;
@@ -213,7 +213,7 @@ public:
                 float gap_x = column_bounds.x + column_bounds.width;
                 if (std::abs(pos.x - gap_x) < 10) {
                     target.zone = DropZone::BETWEEN_GROUPS;
-                    target.index = i + 1;
+                    target.index = static_cast<int>(i + 1);
                     break;
                 }
             }
@@ -227,7 +227,7 @@ public:
                 target.index = 0;
             } else if (side_ == DockSide::RIGHT && pos.x > bounds.x + bounds.width - 20) {
                 target.zone = DropZone::EDGE;
-                target.index = columns_.size();
+                target.index = static_cast<int>(columns_.size());
             }
         }
         
@@ -312,7 +312,7 @@ public:
         if (!rows_.empty()) {
             auto splitter = create_widget<Splitter>(Splitter::Orientation::HORIZONTAL);
             splitter->set_on_resize([this, index = rows_.size() - 1](float delta) {
-                resize_row(index, delta);
+                resize_row(static_cast<int>(index), delta);
             });
             row_container->add_child(splitter);
         }
@@ -324,9 +324,9 @@ public:
     void remove_row(std::shared_ptr<Panel> panel) {
         auto it = std::find(rows_.begin(), rows_.end(), panel);
         if (it != rows_.end()) {
-            size_t index = std::distance(rows_.begin(), it);
+            size_t index = static_cast<size_t>(std::distance(rows_.begin(), it));
             rows_.erase(it);
-            row_heights_.erase(row_heights_.begin() + index);
+            row_heights_.erase(row_heights_.begin() + static_cast<long>(index));
             
             // Remove from children
             auto& children = get_children();
@@ -362,8 +362,8 @@ public:
     }
     
     void set_row_height(int row_index, float height) {
-        if (row_index >= 0 && row_index < row_heights_.size()) {
-            row_heights_[row_index] = std::max(MIN_ROW_HEIGHT, 
+        if (row_index >= 0 && static_cast<size_t>(row_index) < row_heights_.size()) {
+            row_heights_[static_cast<size_t>(row_index)] = std::max(MIN_ROW_HEIGHT, 
                                               std::min(MAX_ROW_HEIGHT, height));
             update_row_heights();
             invalidate_layout();
@@ -381,7 +381,7 @@ public:
                 if (event.type == EventType::MOUSE_PRESS && event.mouse_button == MouseButton::LEFT) {
                     resizing_row_index_ = resize_handle;
                     resize_start_y_ = event.mouse_pos.y;
-                    resize_start_height_ = row_heights_[resize_handle];
+                    resize_start_height_ = row_heights_[static_cast<size_t>(resize_handle)];
                     return true;
                 }
             }
@@ -447,8 +447,8 @@ private:
     static constexpr float RESIZE_HANDLE_HEIGHT = 4.0f;
     
     void resize_row(int index, float delta) {
-        if (index >= 0 && index < row_heights_.size()) {
-            set_row_height(index, row_heights_[index] + delta);
+        if (index >= 0 && static_cast<size_t>(index) < row_heights_.size()) {
+            set_row_height(index, row_heights_[static_cast<size_t>(index)] + delta);
         }
     }
     

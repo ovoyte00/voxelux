@@ -73,11 +73,11 @@ Vector3D Quaternion::to_euler() const {
 
 void Quaternion::from_euler(float pitch, float yaw, float roll) {
     float p = pitch * DEG_TO_RAD * 0.5f;
-    float y = yaw * DEG_TO_RAD * 0.5f;
+    float yaw_rad = yaw * DEG_TO_RAD * 0.5f;
     float r = roll * DEG_TO_RAD * 0.5f;
 
-    float cy = std::cos(y);
-    float sy = std::sin(y);
+    float cy = std::cos(yaw_rad);
+    float sy = std::sin(yaw_rad);
     float cp = std::cos(p);
     float sp = std::sin(p);
     float cr = std::cos(r);
@@ -189,7 +189,7 @@ Quaternion Quaternion::look_rotation(const Vector3D& forward, const Vector3D& up
 Matrix4x4::Matrix4x4() {
     for (int i = 0; i < 4; ++i) {
         for (int j = 0; j < 4; ++j) {
-            m[i][j] = (i == j) ? 1.0f : 0.0f;
+            m[static_cast<size_t>(i)][static_cast<size_t>(j)] = (i == j) ? 1.0f : 0.0f;
         }
     }
 }
@@ -197,7 +197,7 @@ Matrix4x4::Matrix4x4() {
 Matrix4x4::Matrix4x4(float diagonal) {
     for (int i = 0; i < 4; ++i) {
         for (int j = 0; j < 4; ++j) {
-            m[i][j] = (i == j) ? diagonal : 0.0f;
+            m[static_cast<size_t>(i)][static_cast<size_t>(j)] = (i == j) ? diagonal : 0.0f;
         }
     }
 }
@@ -206,9 +206,9 @@ Matrix4x4 Matrix4x4::operator*(const Matrix4x4& other) const {
     Matrix4x4 result;
     for (int i = 0; i < 4; ++i) {
         for (int j = 0; j < 4; ++j) {
-            result.m[i][j] = 0;
+            result.m[static_cast<size_t>(i)][static_cast<size_t>(j)] = 0;
             for (int k = 0; k < 4; ++k) {
-                result.m[i][j] += m[i][k] * other.m[k][j];
+                result.m[static_cast<size_t>(i)][static_cast<size_t>(j)] += m[static_cast<size_t>(i)][static_cast<size_t>(k)] * other.m[static_cast<size_t>(k)][static_cast<size_t>(j)];
             }
         }
     }
@@ -385,7 +385,7 @@ Matrix4x4 Matrix4x4::transpose() const {
     Matrix4x4 result;
     for (int i = 0; i < 4; ++i) {
         for (int j = 0; j < 4; ++j) {
-            result.m[i][j] = m[j][i];
+            result.m[static_cast<size_t>(i)][static_cast<size_t>(j)] = m[static_cast<size_t>(j)][static_cast<size_t>(i)];
         }
     }
     return result;

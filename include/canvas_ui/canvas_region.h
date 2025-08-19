@@ -242,7 +242,7 @@ public:
     
     // Context menu
     virtual std::vector<std::string> get_context_menu_items() const { return {}; }
-    virtual void handle_context_menu_selection(const std::string& item) {}
+    virtual void handle_context_menu_selection([[maybe_unused]] const std::string& item) {}
     
 protected:
     EditorType type_;

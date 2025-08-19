@@ -118,7 +118,7 @@ std::vector<ShapedGlyph> FontMetrics::shape_text(const std::string& text, float 
     
     float scale = font_size_px / metrics_.units_per_em;
     uint32_t prev_glyph = 0;
-    float x_pos = 0;
+    [[maybe_unused]] float x_pos = 0;
     
     for (size_t i = 0; i < text.length(); ++i) {
         // Simple UTF-8 to codepoint (handles ASCII for now)

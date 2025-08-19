@@ -238,9 +238,9 @@ bool Grid3DRenderer::create_grid_geometries() {
     glBindBuffer(GL_ARRAY_BUFFER, vbo_xz_);
     glBufferData(GL_ARRAY_BUFFER, sizeof(vertices_xz), vertices_xz, GL_STATIC_DRAW);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo_);
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), reinterpret_cast<void*>(0));
     glEnableVertexAttribArray(0);
-    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3 * sizeof(float)));
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), reinterpret_cast<void*>(3 * sizeof(float)));
     glEnableVertexAttribArray(1);
     
     // Setup YZ plane
@@ -248,9 +248,9 @@ bool Grid3DRenderer::create_grid_geometries() {
     glBindBuffer(GL_ARRAY_BUFFER, vbo_yz_);
     glBufferData(GL_ARRAY_BUFFER, sizeof(vertices_yz), vertices_yz, GL_STATIC_DRAW);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo_);
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), reinterpret_cast<void*>(0));
     glEnableVertexAttribArray(0);
-    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3 * sizeof(float)));
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), reinterpret_cast<void*>(3 * sizeof(float)));
     glEnableVertexAttribArray(1);
     
     
@@ -259,9 +259,9 @@ bool Grid3DRenderer::create_grid_geometries() {
     glBindBuffer(GL_ARRAY_BUFFER, vbo_xy_);
     glBufferData(GL_ARRAY_BUFFER, sizeof(vertices_xy), vertices_xy, GL_STATIC_DRAW);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo_);
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), reinterpret_cast<void*>(0));
     glEnableVertexAttribArray(0);
-    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3 * sizeof(float)));
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), reinterpret_cast<void*>(3 * sizeof(float)));
     glEnableVertexAttribArray(1);
     
     
@@ -279,7 +279,7 @@ void Grid3DRenderer::render(const Camera3D& camera, const Rect2D& viewport, cons
     
     
     // Set OpenGL viewport to match the rendering region
-    glViewport(viewport.x, viewport.y, viewport.width, viewport.height);
+    glViewport(static_cast<GLint>(viewport.x), static_cast<GLint>(viewport.y), static_cast<GLsizei>(viewport.width), static_cast<GLsizei>(viewport.height));
     
     
     // Clear depth buffer before rendering grids

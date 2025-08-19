@@ -20,7 +20,7 @@ const Voxel VoxelGrid::empty_voxel_;
 const Material MaterialRegistry::default_material_{"Default", Color(128, 128, 128)};
 
 VoxelGrid::VoxelGrid(const Vector3i& dimensions) 
-    : dimensions_(dimensions), voxels_(dimensions.x * dimensions.y * dimensions.z) {
+    : dimensions_(dimensions), voxels_(static_cast<size_t>(dimensions.x * dimensions.y * dimensions.z)) {
     if (dimensions.x <= 0 || dimensions.y <= 0 || dimensions.z <= 0) {
         throw std::invalid_argument("Grid dimensions must be positive");
     }
@@ -39,13 +39,13 @@ size_t VoxelGrid::get_index(const Vector3i& pos) const {
     if (!is_valid_position(pos)) {
         throw std::out_of_range("Position out of grid bounds");
     }
-    return pos.x + pos.y * dimensions_.x + pos.z * dimensions_.x * dimensions_.y;
+    return static_cast<size_t>(pos.x + pos.y * dimensions_.x + pos.z * dimensions_.x * dimensions_.y);
 }
 
 Vector3i VoxelGrid::get_position(size_t index) const {
-    int z = index / (dimensions_.x * dimensions_.y);
-    int y = (index % (dimensions_.x * dimensions_.y)) / dimensions_.x;
-    int x = index % dimensions_.x;
+    int z = static_cast<int>(index / static_cast<size_t>(dimensions_.x * dimensions_.y));
+    int y = static_cast<int>((index % static_cast<size_t>(dimensions_.x * dimensions_.y)) / static_cast<size_t>(dimensions_.x));
+    int x = static_cast<int>(index % static_cast<size_t>(dimensions_.x));
     return Vector3i(x, y, z);
 }
 
@@ -84,8 +84,8 @@ bool VoxelGrid::is_empty() const {
 }
 
 size_t VoxelGrid::active_voxel_count() const {
-    return std::count_if(voxels_.begin(), voxels_.end(), 
-                        [](const Voxel& v) { return v.is_active(); });
+    return static_cast<size_t>(std::count_if(voxels_.begin(), voxels_.end(), 
+                        [](const Voxel& v) { return v.is_active(); }));
 }
 
 Vector3i VoxelGrid::min_bounds() const {

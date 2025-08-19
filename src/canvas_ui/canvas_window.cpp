@@ -382,7 +382,7 @@ void CanvasWindow::capture_cursor() {
         // Store current position before capturing
         double x, y;
         glfwGetCursorPos(window_, &x, &y);
-        cursor_capture_pos_ = Point2D(x, y);
+        cursor_capture_pos_ = Point2D(static_cast<float>(x), static_cast<float>(y));
         
         // Disable cursor (hides it and provides unlimited movement)
         glfwSetInputMode(window_, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
@@ -396,7 +396,7 @@ void CanvasWindow::release_cursor() {
         glfwSetInputMode(window_, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
         
         // Restore cursor to original position
-        glfwSetCursorPos(window_, cursor_capture_pos_.x, cursor_capture_pos_.y);
+        glfwSetCursorPos(window_, static_cast<double>(cursor_capture_pos_.x), static_cast<double>(cursor_capture_pos_.y));
         cursor_captured_ = false;
     }
 }
@@ -411,7 +411,7 @@ Point2D CanvasWindow::get_cursor_position() const {
     if (window_) {
         double x, y;
         glfwGetCursorPos(window_, &x, &y);
-        return Point2D(x, y);
+        return Point2D(static_cast<float>(x), static_cast<float>(y));
     }
     return Point2D(0, 0);
 }
@@ -429,7 +429,7 @@ void CanvasWindow::setup_opengl_context() {
     glfwMakeContextCurrent(window_);
     
     // Initialize GLAD
-    if (!gladLoadGL((GLADloadfunc)glfwGetProcAddress)) {
+    if (!gladLoadGL(reinterpret_cast<GLADloadfunc>(glfwGetProcAddress))) {
         throw std::runtime_error("Failed to initialize GLAD");
     }
     
@@ -505,7 +505,7 @@ void CanvasWindow::calculate_dpi_and_scaling() {
     // Base DPI is 72 (macOS/Blender convention)
     // GLFW/system assumes 96 DPI, so we convert
     const float base_dpi = 72.0f;
-    const float system_dpi = 96.0f;
+    [[maybe_unused]] const float system_dpi = 96.0f;
     
     // Calculate actual DPI from the native pixel scale
     // On macOS with retina, actual_scale will be ~2.0
@@ -576,7 +576,7 @@ void CanvasWindow::on_mouse_button(int button, int action, int mods) {
     if (event_router_) {
         std::cout << "Routing event through event router" << std::endl;
         EventResult result = event_router_->route_event(event);
-        std::cout << "Event router result: " << (int)result << std::endl;
+        std::cout << "Event router result: " << static_cast<int>(result) << std::endl;
     } else {
         std::cout << "ERROR: No event router!" << std::endl;
     }
@@ -661,7 +661,7 @@ void CanvasWindow::on_mouse_scroll(double x_offset, double y_offset) {
     // Debug: Log scroll events periodically
     static double last_scroll_time = 0;
     static int scroll_event_count = 0;
-    double time_delta = now - last_scroll_time;
+    [[maybe_unused]] double time_delta = now - last_scroll_time;
     if (++scroll_event_count % 20 == 0) {  // Log every 20th event
         // Scroll event: x, y, modifiers, time_delta
     }
@@ -771,21 +771,21 @@ void CanvasWindow::on_mouse_scroll(double x_offset, double y_offset) {
             return; // Skip normal scroll handling
         }
         
-        // Debug output shows native detection
-        const char* device_name = "Unknown";
-        switch (native_event.device_type) {
-            case voxelux::platform::ScrollDeviceType::MouseWheel:
-                device_name = "MouseWheel";
-                break;
-            case voxelux::platform::ScrollDeviceType::Trackpad:
-                device_name = "Trackpad";
-                break;
-            case voxelux::platform::ScrollDeviceType::SmartMouse:
-                device_name = "SmartMouse";
-                break;
-            default:
-                break;
-        }
+        // Debug output shows native detection (commented out)
+        // const char* device_name = "Unknown";
+        // switch (native_event.device_type) {
+        //     case voxelux::platform::ScrollDeviceType::MouseWheel:
+        //         device_name = "MouseWheel";
+        //         break;
+        //     case voxelux::platform::ScrollDeviceType::Trackpad:
+        //         device_name = "Trackpad";
+        //         break;
+        //     case voxelux::platform::ScrollDeviceType::SmartMouse:
+        //         device_name = "SmartMouse";
+        //         break;
+        //     default:
+        //         break;
+        // }
         // std::cout << "[Native] " << device_name << " x=" << x_offset << " y=" << y_offset << std::endl;
     } else {
         // Fallback to pattern detection
@@ -941,7 +941,7 @@ void CanvasWindow::on_mouse_scroll(double x_offset, double y_offset) {
     }
 }
 
-void CanvasWindow::on_key_event(int key, int scancode, int action, int mods) {
+void CanvasWindow::on_key_event(int key, [[maybe_unused]] int scancode, int action, int mods) {
     // Store previous modifiers to detect changes
     uint32_t prev_modifiers = keyboard_modifiers_;
     keyboard_modifiers_ = static_cast<uint32_t>(mods);

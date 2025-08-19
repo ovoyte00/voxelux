@@ -85,7 +85,7 @@ void ViewportNavigator::start_pan(const glm::vec2& mouse_pos) {
     state_.pan_smooth = glm::vec2(0.0f);  // Reset smooth state for fresh start
 }
 
-void ViewportNavigator::update_pan(const glm::vec2& mouse_pos, float delta_time) {
+void ViewportNavigator::update_pan(const glm::vec2& mouse_pos, [[maybe_unused]] float delta_time) {
     if (state_.mode != NavigationMode::PAN) return;
     
     // Calculate mouse delta
@@ -99,7 +99,7 @@ void ViewportNavigator::update_pan(const glm::vec2& mouse_pos, float delta_time)
     apply_pan(scaled_delta);
 }
 
-void ViewportNavigator::update_pan_delta(const glm::vec2& delta, float delta_time) {
+void ViewportNavigator::update_pan_delta(const glm::vec2& delta, [[maybe_unused]] float delta_time) {
     if (state_.mode != NavigationMode::PAN) return;
     
     // Apply sensitivity with UI scale compensation (divide by scale for HiDPI)
@@ -131,8 +131,8 @@ void ViewportNavigator::apply_pan(const glm::vec2& delta) {
     
     
     // Store old position for comparison
-    Vector3D old_position = camera_->get_position();
-    Vector3D old_target = camera_->get_target();
+    [[maybe_unused]] Vector3D old_position = camera_->get_position();
+    [[maybe_unused]] Vector3D old_target = camera_->get_target();
     
     // Camera3D::pan expects a delta where:
     // x = amount to move along camera's right vector
@@ -141,7 +141,7 @@ void ViewportNavigator::apply_pan(const glm::vec2& delta) {
     
     // Calculate movement scale based on projection type and depth
     float movement_scale;
-    float aspect_ratio = static_cast<float>(viewport_width_) / viewport_height_;
+    [[maybe_unused]] float aspect_ratio = static_cast<float>(viewport_width_) / viewport_height_;
     
     if (state_.is_orthographic) {
         // In orthographic, scale is based on view size
@@ -187,7 +187,7 @@ void ViewportNavigator::start_orbit(const glm::vec2& mouse_pos) {
     // Orbit started
 }
 
-void ViewportNavigator::update_orbit(const glm::vec2& mouse_pos, float delta_time) {
+void ViewportNavigator::update_orbit(const glm::vec2& mouse_pos, [[maybe_unused]] float delta_time) {
     if (state_.mode != NavigationMode::ORBIT) return;
     
     // Calculate mouse delta
@@ -215,7 +215,7 @@ void ViewportNavigator::update_orbit(const glm::vec2& mouse_pos, float delta_tim
     apply_orbit(state_.orbit_momentum);
 }
 
-void ViewportNavigator::update_orbit_delta(const glm::vec2& delta, float delta_time, bool is_smart_mouse) {
+void ViewportNavigator::update_orbit_delta(const glm::vec2& delta, [[maybe_unused]] float delta_time, bool is_smart_mouse) {
     // Update orbit delta
     
     if (state_.mode != NavigationMode::ORBIT) {
@@ -270,8 +270,8 @@ void ViewportNavigator::apply_orbit(const glm::vec2& delta) {
     
     
     // Store old state for debugging
-    Vector3D old_position = camera_->get_position();
-    Vector3D old_target = camera_->get_target();
+    [[maybe_unused]] Vector3D old_position = camera_->get_position();
+    [[maybe_unused]] Vector3D old_target = camera_->get_target();
     
     // Use Camera3D's built-in orbit methods
     // These handle the camera's internal state correctly without conflicts
@@ -287,7 +287,7 @@ void ViewportNavigator::apply_orbit(const glm::vec2& delta) {
     
 }
 
-void ViewportNavigator::zoom(float delta, const glm::vec2& mouse_pos) {
+void ViewportNavigator::zoom(float delta, [[maybe_unused]] const glm::vec2& mouse_pos) {
     // Zoom called
     
     // Clear orbit state when zooming to prevent interference
@@ -335,8 +335,8 @@ void ViewportNavigator::apply_zoom(float delta) {
     
     
     // Store old state for debugging
-    Vector3D old_position = camera_->get_position();
-    float old_distance = camera_->get_distance();
+    [[maybe_unused]] Vector3D old_position = camera_->get_position();
+    [[maybe_unused]] float old_distance = camera_->get_distance();
     
     // Calculate zoom factor using exponential for smooth feel
     // Negative delta zooms in, positive zooms out
@@ -349,7 +349,7 @@ void ViewportNavigator::apply_zoom(float delta) {
     // Update our internal state to match the camera
     Vector3D new_position = camera_->get_position();
     Vector3D new_target = camera_->get_target();
-    float new_distance = camera_->get_distance();
+    [[maybe_unused]] float new_distance = camera_->get_distance();
     
     state_.camera_position = glm::vec3(new_position.x, new_position.y, new_position.z);
     state_.camera_target = glm::vec3(new_target.x, new_target.y, new_target.z);
@@ -365,7 +365,7 @@ void ViewportNavigator::apply_zoom(float delta) {
 }
 
 
-void ViewportNavigator::update_momentum(float delta_time) {
+void ViewportNavigator::update_momentum([[maybe_unused]] float delta_time) {
     if (!state_.has_momentum) return;
     
     // Decay momentum

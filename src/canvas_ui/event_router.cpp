@@ -171,7 +171,7 @@ void EventRouter::deactivate_context(InputContext context) {
     }
 }
 
-void EventRouter::set_context_priority(InputContext context, int priority) {
+void EventRouter::set_context_priority(InputContext context, [[maybe_unused]] int priority) {
     bool any_changed = false;
     for (auto& handler : handlers_) {
         if (handler->get_context() == context) {
@@ -205,7 +205,7 @@ void EventRouter::add_event_filter(EventFilter filter) {
     event_filters_.push_back(filter);
 }
 
-void EventRouter::remove_event_filter(EventFilter filter) {
+void EventRouter::remove_event_filter([[maybe_unused]] EventFilter filter) {
     // Note: This is tricky with std::function, would need better ID system in real implementation
     // For now, just clear all filters if exact match needed
 }
@@ -286,8 +286,8 @@ bool EventRouter::should_handle_event(const ContextualInputHandler* handler, con
     return true;
 }
 
-void EventRouter::log_event(const InputEvent& event, const std::string& handler_name, EventResult result) const {
-    const char* type_name = "UNKNOWN";
+void EventRouter::log_event(const InputEvent& event, [[maybe_unused]] const std::string& handler_name, EventResult result) const {
+    [[maybe_unused]] const char* type_name = "UNKNOWN";
     switch (event.type) {
         case EventType::MOUSE_PRESS: type_name = "MOUSE_PRESS"; break;
         case EventType::MOUSE_RELEASE: type_name = "MOUSE_RELEASE"; break;
@@ -305,7 +305,7 @@ void EventRouter::log_event(const InputEvent& event, const std::string& handler_
         case EventType::MODIFIER_CHANGE: type_name = "MODIFIER_CHANGE"; break;
     }
     
-    const char* result_name = "UNKNOWN";
+    [[maybe_unused]] const char* result_name = "UNKNOWN";
     switch (result) {
         case EventResult::HANDLED: result_name = "HANDLED"; break;
         case EventResult::IGNORED: result_name = "IGNORED"; break;
@@ -406,17 +406,17 @@ EventResult RegionInteractionHandler::handle_event(const InputEvent& event) {
     return EventResult::IGNORED;
 }
 
-bool RegionInteractionHandler::handle_region_resize(const InputEvent& event) {
+bool RegionInteractionHandler::handle_region_resize([[maybe_unused]] const InputEvent& event) {
     // TODO: Implement region resizing logic
     return false;
 }
 
-bool RegionInteractionHandler::handle_region_split(const InputEvent& event) {
+bool RegionInteractionHandler::handle_region_split([[maybe_unused]] const InputEvent& event) {
     // TODO: Implement region splitting logic
     return false;
 }
 
-bool RegionInteractionHandler::is_on_region_splitter(const Point2D& point) const {
+bool RegionInteractionHandler::is_on_region_splitter([[maybe_unused]] const Point2D& point) const {
     // TODO: Check if point is on a region splitter
     return false;
 }
@@ -431,7 +431,7 @@ bool WidgetInteractionHandler::can_handle(const InputEvent& event) const {
     return event.is_mouse_event();
 }
 
-EventResult WidgetInteractionHandler::handle_event(const InputEvent& event) {
+EventResult WidgetInteractionHandler::handle_event([[maybe_unused]] const InputEvent& event) {
     // TODO: Route events to registered widgets
     return EventResult::IGNORED;
 }

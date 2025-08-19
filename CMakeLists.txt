@@ -22,7 +22,7 @@ if(MSVC)
     add_compile_options(/permissive-)  # Strict standards conformance
 else()
     # GCC/Clang
-    add_compile_options(-Wall -Wextra)  # TODO: Add back -Werror after fixing all warnings
+    add_compile_options(-Wall -Wextra -Werror)  # All warnings as errors
     add_compile_options(-Wpedantic)  # Strict ISO C++ compliance
     add_compile_options(-Wconversion)  # Warn on type conversions
     add_compile_options(-Wshadow)  # Warn on variable shadowing

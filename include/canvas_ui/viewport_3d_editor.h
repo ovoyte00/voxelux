@@ -82,9 +82,9 @@ private:
     Camera3D camera_;
     
     // Interaction state
-    bool is_orbiting_ = false;
-    bool is_panning_ = false;
-    bool is_zooming_ = false;
+    [[maybe_unused]] bool is_orbiting_ = false;
+    [[maybe_unused]] bool is_panning_ = false;
+    [[maybe_unused]] bool is_zooming_ = false;
     bool widget_dragging_ = false;  // Track if dragging from widget backdrop
     int sphere_clicked_ = -1;  // Track which sphere was clicked (-1 = none)
     Point2D sphere_click_pos_{0, 0};  // Position where sphere was clicked

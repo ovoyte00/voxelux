@@ -19,7 +19,7 @@
 namespace {
     constexpr float PI = 3.14159265359f;
     constexpr float DEG_TO_RAD = PI / 180.0f;
-    constexpr float RAD_TO_DEG = 180.0f / PI;
+    [[maybe_unused]] constexpr float RAD_TO_DEG = 180.0f / PI;
 }
 
 namespace voxel_canvas {
@@ -118,8 +118,8 @@ void Viewport3DEditor::render_overlay(CanvasRenderer* renderer, const Rect2D& bo
     ScaledTheme scaled_theme = renderer->get_scaled_theme();
     Vector3D euler = camera_.get_rotation().to_euler();
     std::string camera_info = "Distance: " + std::to_string(camera_.get_distance()) + 
-                             " | Rotation: " + std::to_string((int)euler.x) + 
-                             "°, " + std::to_string((int)euler.y) + "°";
+                             " | Rotation: " + std::to_string(static_cast<int>(euler.x)) + 
+                             "°, " + std::to_string(static_cast<int>(euler.y)) + "°";
     Point2D info_pos(bounds.x + 10, bounds.bottom() - 20);
     ColorRGBA info_color = renderer->get_theme().text_secondary;
     renderer->draw_text(camera_info, info_pos, info_color, scaled_theme.font_size_md());
@@ -383,7 +383,7 @@ void Viewport3DEditor::setup_nav_widget() {
     }
 }
 
-void Viewport3DEditor::render_3d_scene(CanvasRenderer* renderer, const Rect2D& bounds) {
+void Viewport3DEditor::render_3d_scene([[maybe_unused]] CanvasRenderer* renderer, const Rect2D& bounds) {
     // Set up OpenGL 3D rendering context for professional viewport
     
     // Clear only the depth buffer for this viewport
@@ -392,7 +392,7 @@ void Viewport3DEditor::render_3d_scene(CanvasRenderer* renderer, const Rect2D& b
     glClear(GL_DEPTH_BUFFER_BIT);
     
     // Set up OpenGL viewport to this region only
-    glViewport(bounds.x, bounds.y, bounds.width, bounds.height);
+    glViewport(static_cast<GLint>(bounds.x), static_cast<GLint>(bounds.y), static_cast<GLsizei>(bounds.width), static_cast<GLsizei>(bounds.height));
 }
 
 void Viewport3DEditor::render_grid(CanvasRenderer* renderer, const Rect2D& bounds) {

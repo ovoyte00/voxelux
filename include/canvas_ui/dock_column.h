@@ -218,7 +218,7 @@ public:
         if (panel_groups_.size() > 1) {
             auto splitter = create_widget<Splitter>(Splitter::Orientation::HORIZONTAL);
             splitter->set_on_resize([this, index = panel_groups_.size() - 1](float delta) {
-                resize_group(index, delta);
+                resize_group(static_cast<int>(index), delta);
             });
             content_->add_child(splitter);  // Add to content container
         }
@@ -499,7 +499,7 @@ private:
         }
     }
     
-    void resize_group(int index, float delta) {
+    void resize_group([[maybe_unused]] int index, [[maybe_unused]] float delta) {
         // TODO: Implement group resizing
     }
 };

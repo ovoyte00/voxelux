@@ -21,32 +21,32 @@ typedef unsigned short stbi_us;
 // Main API functions (stubbed)
 #ifdef STB_IMAGE_IMPLEMENTATION
 
-stbi_uc* stbi_load(const char* filename, int* x, int* y, int* comp, int req_comp) {
+stbi_uc* stbi_load([[maybe_unused]] const char* filename, int* x, int* y, int* comp, [[maybe_unused]] int req_comp) {
     // Stub: Create a simple test pattern
     *x = 32;
     *y = 32;
     *comp = 4;
     
-    stbi_uc* data = (stbi_uc*)malloc(32 * 32 * 4);
+    stbi_uc* data = static_cast<stbi_uc*>(malloc(32 * 32 * 4));
     if (data) {
         // Create a simple gradient pattern
         for (int i = 0; i < 32 * 32 * 4; i += 4) {
-            data[i] = (i / 4) % 256;     // R
-            data[i+1] = (i / 4) % 256;   // G  
-            data[i+2] = (i / 4) % 256;   // B
-            data[i+3] = 255;              // A
+            data[i] = static_cast<stbi_uc>((i / 4) % 256);     // R
+            data[i+1] = static_cast<stbi_uc>((i / 4) % 256);   // G  
+            data[i+2] = static_cast<stbi_uc>((i / 4) % 256);   // B
+            data[i+3] = 255;                                    // A
         }
     }
     return data;
 }
 
-stbi_uc* stbi_load_from_memory(const stbi_uc* buffer, int len, int* x, int* y, int* comp, int req_comp) {
+stbi_uc* stbi_load_from_memory([[maybe_unused]] const stbi_uc* buffer, [[maybe_unused]] int len, int* x, int* y, int* comp, [[maybe_unused]] int req_comp) {
     // Stub: Create a simple test pattern
     *x = 32;
     *y = 32;
     *comp = 4;
     
-    stbi_uc* data = (stbi_uc*)malloc(32 * 32 * 4);
+    stbi_uc* data = static_cast<stbi_uc*>(malloc(32 * 32 * 4));
     if (data) {
         for (int i = 0; i < 32 * 32 * 4; i += 4) {
             data[i] = 128;    // R

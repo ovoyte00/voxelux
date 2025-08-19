@@ -118,17 +118,17 @@ CanvasRenderer::CanvasRenderer(CanvasWindow* window)
     , ui_vao_(0)
     , ui_vbo_(0)
     , ui_ebo_(0)
+    , white_texture_(0)
+    , checker_texture_(0)
     , default_fbo_(0)
     , current_fbo_(0)
     , viewport_x_(0)
     , viewport_y_(0)
     , viewport_width_(0)
     , viewport_height_(0)
+    , scissor_enabled_(false)
     , global_opacity_(1.0f)
-    , path_started_(false)
-    , white_texture_(0)
-    , checker_texture_(0)
-    , scissor_enabled_(false) {
+    , path_started_(false) {
 }
 
 CanvasRenderer::~CanvasRenderer() {
@@ -429,7 +429,7 @@ void CanvasRenderer::draw_line_batched(const Point2D& start, const Point2D& end,
     }
     
     // Add vertices to batch
-    uint32_t base_index = current_batch_.vertices.size();
+    uint32_t base_index = static_cast<uint32_t>(current_batch_.vertices.size());
     
     current_batch_.vertices.push_back(UIVertex(start.x - normal.x, start.y - normal.y, 0, 0, color.r, color.g, color.b, color.a));
     current_batch_.vertices.push_back(UIVertex(end.x - normal.x, end.y - normal.y, 1, 0, color.r, color.g, color.b, color.a));
@@ -505,8 +505,8 @@ void CanvasRenderer::draw_viewport_line(const Point2D& start, const Point2D& end
     ui_shader_->use();
     
     // Set projection matrix
-    float vp_width = std::max(1.0f, (float)viewport_width_);
-    float vp_height = std::max(1.0f, (float)viewport_height_);
+    float vp_width = std::max(1.0f, static_cast<float>(viewport_width_));
+    float vp_height = std::max(1.0f, static_cast<float>(viewport_height_));
     float projection[16] = {
         2.0f / vp_width,  0,                  0, 0,
         0,               -2.0f / vp_height,    0, 0,
@@ -574,7 +574,7 @@ void CanvasRenderer::draw_viewport_circle(const Point2D& center, float radius, c
     // Generate circle vertices using triangle fan
     // Format: position(2) + texcoord(2) + color(4) = 8 floats per vertex
     std::vector<float> vertices;
-    vertices.reserve((segments + 2) * 8); // 8 floats per vertex
+    vertices.reserve(static_cast<size_t>(segments + 2) * 8); // 8 floats per vertex
     
     // Center vertex
     vertices.push_back(center.x);      // position x
@@ -588,7 +588,7 @@ void CanvasRenderer::draw_viewport_circle(const Point2D& center, float radius, c
     
     // Generate perimeter vertices
     for (int i = 0; i <= segments; i++) {
-        float angle = 2.0f * M_PI * float(i) / float(segments);
+        float angle = static_cast<float>(2.0 * M_PI * static_cast<double>(i) / static_cast<double>(segments));
         float x = center.x + radius * std::cos(angle);
         float y = center.y + radius * std::sin(angle);
         float u = 0.5f + 0.5f * std::cos(angle);
@@ -648,16 +648,16 @@ void CanvasRenderer::draw_viewport_circle(const Point2D& center, float radius, c
     
     glBindVertexArray(circle_vao);
     glBindBuffer(GL_ARRAY_BUFFER, circle_vbo);
-    glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(float), vertices.data(), GL_STREAM_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(vertices.size() * sizeof(float)), vertices.data(), GL_STREAM_DRAW);
     
     // Setup vertex attributes matching the shader layout
     // Layout: position(2) + texcoord(2) + color(4) = 8 floats per vertex
     glEnableVertexAttribArray(0); // position
-    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)0);
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), reinterpret_cast<void*>(0));
     glEnableVertexAttribArray(1); // texcoord
-    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(2 * sizeof(float)));
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), reinterpret_cast<void*>(2 * sizeof(float)));
     glEnableVertexAttribArray(2); // color
-    glVertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(4 * sizeof(float)));
+    glVertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, 8 * sizeof(float), reinterpret_cast<void*>(4 * sizeof(float)));
     
     // Enable blending for transparency
     glEnable(GL_BLEND);
@@ -683,7 +683,7 @@ void CanvasRenderer::draw_viewport_circle_ring(const Point2D& center, float radi
     
     // Format: position(2) + texcoord(2) + color(4) = 8 floats per vertex
     std::vector<float> vertices;
-    vertices.reserve((segments + 1) * 2 * 8); // Two vertices per segment (inner and outer)
+    vertices.reserve(static_cast<size_t>(segments + 1) * 2 * 8); // Two vertices per segment (inner and outer)
     
     float inner_radius = radius - thickness;
     
@@ -724,14 +724,14 @@ void CanvasRenderer::draw_viewport_circle_ring(const Point2D& center, float radi
     
     glBindVertexArray(ring_vao);
     glBindBuffer(GL_ARRAY_BUFFER, ring_vbo);
-    glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(float), vertices.data(), GL_DYNAMIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(vertices.size() * sizeof(float)), vertices.data(), GL_DYNAMIC_DRAW);
     
     // Set up shader
     ui_shader_->use();
     
     // Set projection matrix
-    float vp_width = std::max(1.0f, (float)viewport_width_);
-    float vp_height = std::max(1.0f, (float)viewport_height_);
+    float vp_width = std::max(1.0f, static_cast<float>(viewport_width_));
+    float vp_height = std::max(1.0f, static_cast<float>(viewport_height_));
     float projection[16] = {
         2.0f / vp_width,  0,                  0, 0,
         0,               -2.0f / vp_height,    0, 0,
@@ -747,11 +747,11 @@ void CanvasRenderer::draw_viewport_circle_ring(const Point2D& center, float radi
     // Setup vertex attributes matching the shader layout
     // Layout: position(2) + texcoord(2) + color(4) = 8 floats per vertex
     glEnableVertexAttribArray(0); // position
-    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)0);
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), reinterpret_cast<void*>(0));
     glEnableVertexAttribArray(1); // texcoord
-    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(2 * sizeof(float)));
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), reinterpret_cast<void*>(2 * sizeof(float)));
     glEnableVertexAttribArray(2); // color
-    glVertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(4 * sizeof(float)));
+    glVertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, 8 * sizeof(float), reinterpret_cast<void*>(4 * sizeof(float)));
     
     // Enable blending for transparency
     glEnable(GL_BLEND);
@@ -881,7 +881,7 @@ void CanvasRenderer::batch_text(const std::string& text, const Point2D& position
             current_batch_.is_text = true;
             
             // Add glyph quad to batch
-            uint32_t base_index = current_batch_.vertices.size();
+            uint32_t base_index = static_cast<uint32_t>(current_batch_.vertices.size());
             
             // Calculate UVs
             float u0 = 0.0f, v0 = 0.0f, u1 = 1.0f, v1 = 1.0f;
@@ -1014,9 +1014,9 @@ void CanvasRenderer::translate3d(float x, float y, float z) {
 
 void CanvasRenderer::rotate3d(float angle_x, float angle_y, float angle_z) {
     // Convert degrees to radians
-    float rx = angle_x * M_PI / 180.0f;
-    float ry = angle_y * M_PI / 180.0f;
-    float rz = angle_z * M_PI / 180.0f;
+    float rx = angle_x * static_cast<float>(M_PI) / 180.0f;
+    float ry = angle_y * static_cast<float>(M_PI) / 180.0f;
+    float rz = angle_z * static_cast<float>(M_PI) / 180.0f;
     
     // Rotation matrix X
     float rot_x[16] = {
@@ -1062,7 +1062,7 @@ void CanvasRenderer::rotate_axis(float angle, float axis_x, float axis_y, float 
     axis_y /= length;
     axis_z /= length;
     
-    float rad = angle * M_PI / 180.0f;
+    float rad = angle * static_cast<float>(M_PI) / 180.0f;
     float c = std::cos(rad);
     float s = std::sin(rad);
     float t = 1.0f - c;
@@ -1116,7 +1116,7 @@ void CanvasRenderer::apply_transform(const float* matrix4x4) {
 
 void CanvasRenderer::set_perspective(float fov_degrees, float near_plane, float far_plane) {
     float aspect = float(viewport_width_) / float(viewport_height_);
-    float fov_rad = fov_degrees * M_PI / 180.0f;
+    float fov_rad = fov_degrees * static_cast<float>(M_PI) / 180.0f;
     float f = 1.0f / std::tan(fov_rad / 2.0f);
     
     float perspective[16] = {
@@ -1146,8 +1146,8 @@ void CanvasRenderer::set_ortho(float left, float right, float bottom, float top,
 }
 
 void CanvasRenderer::skew(float angle_x, float angle_y) {
-    float skew_x = std::tan(angle_x * M_PI / 180.0f);
-    float skew_y = std::tan(angle_y * M_PI / 180.0f);
+    float skew_x = static_cast<float>(std::tan(static_cast<double>(angle_x * static_cast<float>(M_PI) / 180.0f)));
+    float skew_y = static_cast<float>(std::tan(static_cast<double>(angle_y * static_cast<float>(M_PI) / 180.0f)));
     
     float skew_matrix[16] = {
         1, skew_y, 0, 0,
@@ -1224,7 +1224,7 @@ void CanvasRenderer::draw_linear_gradient(const Rect2D& rect, float angle_degree
     if (stops.size() < 2) return;
     
     // Convert angle to radians and calculate direction
-    float radians = angle_degrees * (M_PI / 180.0f);
+    float radians = angle_degrees * static_cast<float>(M_PI / 180.0);
     float dx = std::sin(radians);
     float dy = -std::cos(radians);
     
@@ -1261,7 +1261,7 @@ void CanvasRenderer::draw_linear_gradient(const Rect2D& rect, float angle_degree
     }
 }
 
-void CanvasRenderer::draw_radial_gradient(const Rect2D& rect, const Point2D& center,
+void CanvasRenderer::draw_radial_gradient([[maybe_unused]] const Rect2D& rect, const Point2D& center,
                                          float radius_x, float radius_y,
                                          const std::vector<std::pair<ColorRGBA, float>>& stops) {
     if (stops.size() < 2) return;
@@ -1300,8 +1300,8 @@ void CanvasRenderer::draw_conic_gradient(const Rect2D& rect, const Point2D& cent
         ColorRGBA color = interpolate_gradient_color(stops, t);
         
         // Draw triangular segment from center
-        float rad1 = angle * (M_PI / 180.0f);
-        float rad2 = next_angle * (M_PI / 180.0f);
+        float rad1 = angle * static_cast<float>(M_PI / 180.0);
+        float rad2 = next_angle * static_cast<float>(M_PI / 180.0);
         
         float radius = std::max(rect.width, rect.height);
         Point2D p1 = center;
@@ -1406,7 +1406,7 @@ void CanvasRenderer::ShadowCache::create_shadow_texture(NinePatchTexture& textur
     texture.border_size = border;
     
     // Create pixel data for shadow
-    std::vector<uint8_t> pixels(tex_size * tex_size * 4, 0);
+    std::vector<uint8_t> pixels(static_cast<size_t>(tex_size * tex_size * 4), 0);
     
     // Generate shadow using gaussian blur approximation
     float sigma = blur_radius / 3.0f;
@@ -1436,10 +1436,10 @@ void CanvasRenderer::ShadowCache::create_shadow_texture(NinePatchTexture& textur
             
             // Set pixel
             int idx = (y * tex_size + x) * 4;
-            pixels[idx + 0] = uint8_t(color.r * 255);
-            pixels[idx + 1] = uint8_t(color.g * 255);
-            pixels[idx + 2] = uint8_t(color.b * 255);
-            pixels[idx + 3] = uint8_t(color.a * alpha * 255);
+            pixels[static_cast<size_t>(idx) + 0] = uint8_t(color.r * 255);
+            pixels[static_cast<size_t>(idx) + 1] = uint8_t(color.g * 255);
+            pixels[static_cast<size_t>(idx) + 2] = uint8_t(color.b * 255);
+            pixels[static_cast<size_t>(idx) + 3] = uint8_t(color.a * alpha * 255);
         }
     }
     
@@ -1543,7 +1543,7 @@ void CanvasRenderer::draw_shadow_cached(const Rect2D& rect, float blur_radius, f
     
     // Add all 9 patches to batch
     for (const auto& patch : patches) {
-        uint32_t base_index = current_batch_.vertices.size();
+        uint32_t base_index = static_cast<uint32_t>(current_batch_.vertices.size());
         
         // Add vertices
         current_batch_.vertices.push_back(UIVertex(
@@ -1607,7 +1607,7 @@ void CanvasRenderer::draw_shadow(const Rect2D& rect, float blur_radius, float sp
     }
 }
 
-void CanvasRenderer::begin_blur_region(const Rect2D& region, float blur_radius) {
+void CanvasRenderer::begin_blur_region(const Rect2D& region, [[maybe_unused]] float blur_radius) {
     // Ensure blur texture is large enough
     int width = static_cast<int>(region.width);
     int height = static_cast<int>(region.height);
@@ -1702,8 +1702,8 @@ void CanvasRenderer::apply_gaussian_blur(GLuint texture, const Rect2D& src_rect,
     
     glEnableVertexAttribArray(0);
     glEnableVertexAttribArray(1);
-    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);
-    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), reinterpret_cast<void*>(0));
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), reinterpret_cast<void*>(2 * sizeof(float)));
     glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
     
     // Pass 2: Vertical blur back to screen
@@ -1810,7 +1810,7 @@ void CanvasRenderer::apply_backdrop_blur(const Rect2D& region, float blur_radius
     glDeleteTextures(1, &blurred_texture);
 }
 
-void CanvasRenderer::apply_backdrop_saturate(const Rect2D& region, float saturation) {
+void CanvasRenderer::apply_backdrop_saturate(const Rect2D& region, [[maybe_unused]] float saturation) {
     if (!backdrop_texture_) return;
     
     // TODO: Implement saturation shader
@@ -2085,7 +2085,7 @@ void CanvasRenderer::translate_matrix(float* matrix, float x, float y) {
 }
 
 void CanvasRenderer::rotate_matrix(float* matrix, float degrees) {
-    float radians = degrees * (M_PI / 180.0f);
+    float radians = degrees * static_cast<float>(M_PI / 180.0);
     float c = std::cos(radians);
     float s = std::sin(radians);
     
@@ -2214,19 +2214,19 @@ void CanvasRenderer::flush_instances() {
     if (use_buffer_orphaning_ && instance_data_.size() > max_instances_ / 4) {
         // Orphan the buffer for large updates (>25% of buffer)
         // This tells the driver we're replacing all data
-        glBufferData(GL_ARRAY_BUFFER, max_instances_ * sizeof(WidgetInstanceData), 
+        glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(max_instances_ * sizeof(WidgetInstanceData)), 
                      nullptr, GL_DYNAMIC_DRAW);
     }
     
     // Upload the instance data
-    glBufferSubData(GL_ARRAY_BUFFER, 0, data_size, instance_data_.data());
+    glBufferSubData(GL_ARRAY_BUFFER, 0, static_cast<GLsizeiptr>(data_size), instance_data_.data());
     
     // Set up rendering state
     instance_shader_->use();
     
     // Set projection matrix
-    float vp_width = std::max(1.0f, (float)viewport_width_);
-    float vp_height = std::max(1.0f, (float)viewport_height_);
+    float vp_width = std::max(1.0f, static_cast<float>(viewport_width_));
+    float vp_height = std::max(1.0f, static_cast<float>(viewport_height_));
     float projection[16] = {
         2.0f / vp_width,  0,                  0, 0,
         0,               -2.0f / vp_height,    0, 0,
@@ -2249,7 +2249,7 @@ void CanvasRenderer::flush_instances() {
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     
     // Draw all instances in ONE call!
-    glDrawElementsInstanced(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr, instance_data_.size());
+    glDrawElementsInstanced(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr, static_cast<GLsizei>(instance_data_.size()));
     
     // Update statistics
     draw_calls_this_frame_++;
@@ -2296,8 +2296,8 @@ void CanvasRenderer::render_sorted_batches() {
             ui_shader_->use();
             
             // Set projection matrix for new shader
-            float vp_width = std::max(1.0f, (float)viewport_width_);
-            float vp_height = std::max(1.0f, (float)viewport_height_);
+            float vp_width = std::max(1.0f, static_cast<float>(viewport_width_));
+            float vp_height = std::max(1.0f, static_cast<float>(viewport_height_));
             
             float projection[16] = {
                 2.0f / vp_width,  0,                  0, 0,
@@ -2345,19 +2345,19 @@ void CanvasRenderer::render_sorted_batches() {
         // Upload vertex data
         glBindBuffer(GL_ARRAY_BUFFER, ui_vbo_);
         glBufferData(GL_ARRAY_BUFFER, 
-                     batch.vertices.size() * sizeof(UIVertex), 
+                     static_cast<GLsizeiptr>(batch.vertices.size() * sizeof(UIVertex)), 
                      batch.vertices.data(), 
                      GL_STREAM_DRAW);
         
         // Upload index data
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ui_ebo_);
         glBufferData(GL_ELEMENT_ARRAY_BUFFER, 
-                     batch.indices.size() * sizeof(uint32_t), 
+                     static_cast<GLsizeiptr>(batch.indices.size() * sizeof(uint32_t)), 
                      batch.indices.data(), 
                      GL_STREAM_DRAW);
         
         // Draw!
-        glDrawElements(GL_TRIANGLES, batch.indices.size(), GL_UNSIGNED_INT, nullptr);
+        glDrawElements(GL_TRIANGLES, static_cast<GLsizei>(batch.indices.size()), GL_UNSIGNED_INT, nullptr);
         
         // Update statistics
         draw_calls_this_frame_++;
@@ -2401,12 +2401,12 @@ void CanvasRenderer::flush_batches() {
         glBindVertexArray(ui_vao_);
         glBindBuffer(GL_ARRAY_BUFFER, ui_vbo_);
         glBufferData(GL_ARRAY_BUFFER, 
-                     batch.vertices.size() * sizeof(UIVertex), 
+                     static_cast<GLsizeiptr>(batch.vertices.size() * sizeof(UIVertex)), 
                      batch.vertices.data(), GL_STREAM_DRAW);
         
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ui_ebo_);
         glBufferData(GL_ELEMENT_ARRAY_BUFFER, 
-                     batch.indices.size() * sizeof(uint32_t), 
+                     static_cast<GLsizeiptr>(batch.indices.size() * sizeof(uint32_t)), 
                      batch.indices.data(), GL_STREAM_DRAW);
         
         // Draw
@@ -2451,7 +2451,7 @@ void CanvasRenderer::disable_scissor() {
 }
 
 void CanvasRenderer::bind_texture(GLuint texture_id, int unit) {
-    glActiveTexture(GL_TEXTURE0 + unit);
+    glActiveTexture(GL_TEXTURE0 + static_cast<GLenum>(unit));
     glBindTexture(GL_TEXTURE_2D, texture_id);
 }
 
@@ -2476,7 +2476,7 @@ void CanvasRenderer::draw_texture(GLuint texture_id, const Rect2D& rect, const C
     }
     
     // Add vertices to batch - same as draw_rect but with proper texture coords
-    uint32_t base_index = current_batch_.vertices.size();
+    uint32_t base_index = static_cast<uint32_t>(current_batch_.vertices.size());
     
     // Add vertices with proper texture coordinates (0,0 to 1,1 for full texture)
     current_batch_.vertices.push_back(UIVertex(rect.x, rect.y, 0.0f, 0.0f, 
@@ -2532,17 +2532,17 @@ void CanvasRenderer::setup_buffers() {
     
     // Position (location 0)
     glEnableVertexAttribArray(0);
-    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(UIVertex), (void*)0);
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(UIVertex), reinterpret_cast<void*>(0));
     check_gl_error("setup position attribute");
     
     // Texture coordinates (location 1)
     glEnableVertexAttribArray(1);
-    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(UIVertex), (void*)(2 * sizeof(float)));
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(UIVertex), reinterpret_cast<void*>(2 * sizeof(float)));
     check_gl_error("setup texture coordinate attribute");
     
     // Color (location 2)
     glEnableVertexAttribArray(2);
-    glVertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, sizeof(UIVertex), (void*)(4 * sizeof(float)));
+    glVertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, sizeof(UIVertex), reinterpret_cast<void*>(4 * sizeof(float)));
     check_gl_error("setup color attribute");
     
     
@@ -2573,9 +2573,9 @@ void CanvasRenderer::setup_buffers() {
     
     // Setup vertex attributes for widget
     glEnableVertexAttribArray(0);
-    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), reinterpret_cast<void*>(0));
     glEnableVertexAttribArray(1);
-    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), reinterpret_cast<void*>(2 * sizeof(float)));
     
     // Create instance buffer (using traditional approach for macOS compatibility)
     glGenBuffers(1, &instance_vbo_);
@@ -2588,7 +2588,7 @@ void CanvasRenderer::setup_buffers() {
     const GLubyte* version_str = glGetString(GL_VERSION);
     int gl_major = 4, gl_minor = 1;
     if (version_str) {
-        sscanf((const char*)version_str, "%d.%d", &gl_major, &gl_minor);
+        sscanf(reinterpret_cast<const char*>(version_str), "%d.%d", &gl_major, &gl_minor);
     }
     
     // Determine best buffer strategy based on platform capabilities
@@ -2603,7 +2603,7 @@ void CanvasRenderer::setup_buffers() {
     } else {
         // Compatible path: Traditional buffer with orphaning
         std::cout << "Using traditional buffer with orphaning (OpenGL 4.1+)" << std::endl;
-        glBufferData(GL_ARRAY_BUFFER, instance_buffer_size, nullptr, GL_DYNAMIC_DRAW);
+        glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(instance_buffer_size), nullptr, GL_DYNAMIC_DRAW);
         use_buffer_orphaning_ = true;
     }
     
@@ -2615,32 +2615,32 @@ void CanvasRenderer::setup_buffers() {
     
     // Transform (location 3)
     glEnableVertexAttribArray(3);
-    glVertexAttribPointer(3, 4, GL_FLOAT, GL_FALSE, stride, (void*)offsetof(WidgetInstanceData, transform));
+    glVertexAttribPointer(3, 4, GL_FLOAT, GL_FALSE, static_cast<GLsizei>(stride), reinterpret_cast<void*>(offsetof(WidgetInstanceData, transform)));
     glVertexAttribDivisor(3, 1);  // One per instance
     
     // Color (location 4)
     glEnableVertexAttribArray(4);
-    glVertexAttribPointer(4, 4, GL_FLOAT, GL_FALSE, stride, (void*)offsetof(WidgetInstanceData, color));
+    glVertexAttribPointer(4, 4, GL_FLOAT, GL_FALSE, static_cast<GLsizei>(stride), reinterpret_cast<void*>(offsetof(WidgetInstanceData, color)));
     glVertexAttribDivisor(4, 1);
     
     // UV rect (location 5)
     glEnableVertexAttribArray(5);
-    glVertexAttribPointer(5, 4, GL_FLOAT, GL_FALSE, stride, (void*)offsetof(WidgetInstanceData, uv_rect));
+    glVertexAttribPointer(5, 4, GL_FLOAT, GL_FALSE, static_cast<GLsizei>(stride), reinterpret_cast<void*>(offsetof(WidgetInstanceData, uv_rect)));
     glVertexAttribDivisor(5, 1);
     
     // Params/corner radius (location 6)
     glEnableVertexAttribArray(6);
-    glVertexAttribPointer(6, 4, GL_FLOAT, GL_FALSE, stride, (void*)offsetof(WidgetInstanceData, params));
+    glVertexAttribPointer(6, 4, GL_FLOAT, GL_FALSE, static_cast<GLsizei>(stride), reinterpret_cast<void*>(offsetof(WidgetInstanceData, params)));
     glVertexAttribDivisor(6, 1);
     
     // Border (location 7)
     glEnableVertexAttribArray(7);
-    glVertexAttribPointer(7, 4, GL_FLOAT, GL_FALSE, stride, (void*)offsetof(WidgetInstanceData, border));
+    glVertexAttribPointer(7, 4, GL_FLOAT, GL_FALSE, static_cast<GLsizei>(stride), reinterpret_cast<void*>(offsetof(WidgetInstanceData, border)));
     glVertexAttribDivisor(7, 1);
     
     // Extra params (location 8)
     glEnableVertexAttribArray(8);
-    glVertexAttribPointer(8, 4, GL_FLOAT, GL_FALSE, stride, (void*)offsetof(WidgetInstanceData, extra));
+    glVertexAttribPointer(8, 4, GL_FLOAT, GL_FALSE, static_cast<GLsizei>(stride), reinterpret_cast<void*>(offsetof(WidgetInstanceData, extra)));
     glVertexAttribDivisor(8, 1);
     
     glBindVertexArray(0);
