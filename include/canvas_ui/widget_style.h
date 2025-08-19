@@ -775,6 +775,8 @@ public:
         float width, height, min_width, max_width, min_height, max_height;
         SizeUnit width_unit = AUTO;
         SizeUnit height_unit = AUTO;
+        float width_percent = 100.0f;  // Original percentage value (default 100%)
+        float height_percent = 100.0f; // Original percentage value (default 100%)
         ColorRGBA background_color;
         ColorRGBA text_color_rgba;
         float font_size_pixels;

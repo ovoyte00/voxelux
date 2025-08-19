@@ -8,9 +8,12 @@
 #pragma once
 
 #include "canvas_ui/styled_widgets.h"
+#include "canvas_ui/icon_system.h"
 #include <vector>
 #include <memory>
 #include <functional>
+#include <iostream>
+#include <limits>
 
 namespace voxel_canvas {
 
@@ -109,22 +112,19 @@ public:
         base_style_.gap = SpacingValue(0);  // No gap between header and content
         base_style_.height = SizeValue::percent(100);  // Extend full height
         
-        // Set default widths based on type
+        // Initialize user widths with defaults (logical pixels)
         if (type == ColumnType::TOOL) {
-            collapsed_width_ = 36.0f;   // Collapsed width for all columns
-            expanded_width_ = 72.0f;    // Tool panel expanded (2-column grid)
-            min_width_ = 36.0f;
-            max_width_ = 72.0f;          // Tool dock has fixed widths
+            // Tool columns have fixed widths
+            collapsed_user_width_ = 36.0f;   // Fixed collapsed width
+            expanded_user_width_ = 72.0f;    // Fixed expanded width (2-column grid)
         } else {
-            collapsed_width_ = 36.0f;   // Icon bar width (standard)
-            expanded_width_ = 250.0f;   // Default panel width
-            min_width_ = 36.0f;         // Minimum width when collapsed
-            max_width_ = 500.0f;
+            // Regular columns have resizable widths
+            collapsed_user_width_ = 36.0f;   // Default collapsed width
+            expanded_user_width_ = 250.0f;   // Default expanded width
         }
         
-        // Set initial width based on state
-        current_width_ = (state_ == ColumnState::COLLAPSED) ? collapsed_width_ : expanded_width_;
-        base_style_.width = SizeValue(current_width_);
+        // Apply initial state styling
+        update_style_for_state();
         
         // Create header (14px tall with expand/collapse button)
         header_ = create_widget<Container>("dock-column-header");
@@ -132,7 +132,7 @@ public:
             .set_display(WidgetStyle::Display::Flex)
             .set_flex_direction(WidgetStyle::FlexDirection::Row)
             .set_height(SizeValue(14))
-            .set_background(ColorValue("gray_5"))
+            .set_background(ColorValue("gray_4"))
             .set_align_items(WidgetStyle::AlignItems::Center)
             .set_justify_content(WidgetStyle::JustifyContent::Center);
         
@@ -179,12 +179,12 @@ public:
             state_ = state;
             update_style_for_state();
             
-            // Trigger animation
+            // Trigger animation with appropriate target width
             if (state == ColumnState::COLLAPSED) {
-                target_width_ = collapsed_width_;
+                target_width_ = (type_ == ColumnType::TOOL) ? 36.0f : collapsed_user_width_;
                 animating_ = true;
             } else if (state == ColumnState::EXPANDED) {
-                target_width_ = expanded_width_;
+                target_width_ = (type_ == ColumnType::TOOL) ? 72.0f : expanded_user_width_;
                 animating_ = true;
             } else {
                 set_visible(false);
@@ -265,34 +265,54 @@ public:
     ColumnType get_type() const { return type_; }
     DockSide get_side() const { return side_; }
     
-    // Sizing
-    float get_current_width() const { return current_width_; }
-    float get_collapsed_width() const { return collapsed_width_; }
-    float get_expanded_width() const { return expanded_width_; }
+    // Sizing - all in logical pixels
+    float get_current_width() const { 
+        return (state_ == ColumnState::COLLAPSED) ? collapsed_user_width_ : expanded_user_width_;
+    }
     
-    void set_width(float width) {
-        expanded_width_ = std::max(min_width_, std::min(max_width_, width));
-        if (state_ == ColumnState::EXPANDED) {
-            current_width_ = expanded_width_;
-            base_style_.width = SizeValue(current_width_);
-            invalidate_layout();
+    // Resize handling for dragging
+    void resize_by_delta(float delta_logical_pixels) {
+        if (type_ == ColumnType::TOOL) {
+            // Tool columns don't resize
+            return;
         }
+        
+        if (state_ == ColumnState::COLLAPSED) {
+            // Collapsed: min 36px, max 225px
+            collapsed_user_width_ = std::max(36.0f, std::min(225.0f, collapsed_user_width_ + delta_logical_pixels));
+            base_style_.width = SizeValue(collapsed_user_width_);
+        } else {
+            // Expanded: min 250px, no max
+            expanded_user_width_ = std::max(250.0f, expanded_user_width_ + delta_logical_pixels);
+            base_style_.width = SizeValue(expanded_user_width_);
+        }
+        invalidate_layout();
     }
     
     // Animation
     void update(float delta_time) {
         if (animating_) {
-            float speed = 500.0f; // pixels per second
+            float speed = 500.0f; // logical pixels per second
             float max_change = speed * delta_time;
             
-            if (std::abs(current_width_ - target_width_) < max_change) {
-                current_width_ = target_width_;
+            float current_width = get_current_width();
+            if (std::abs(current_width - target_width_) < max_change) {
+                if (state_ == ColumnState::COLLAPSED) {
+                    collapsed_user_width_ = target_width_;
+                } else {
+                    expanded_user_width_ = target_width_;
+                }
                 animating_ = false;
             } else {
-                current_width_ += (target_width_ > current_width_ ? max_change : -max_change);
+                float new_width = current_width + (target_width_ > current_width ? max_change : -max_change);
+                if (state_ == ColumnState::COLLAPSED) {
+                    collapsed_user_width_ = new_width;
+                } else {
+                    expanded_user_width_ = new_width;
+                }
             }
             
-            base_style_.width = SizeValue(current_width_);
+            base_style_.width = SizeValue(get_current_width());
             invalidate_layout();
         }
     }
@@ -311,10 +331,70 @@ public:
     
     std::string get_widget_type() const override { return "dock-column"; }
     
+    // Override to provide intrinsic sizes based on state
+    IntrinsicSizes calculate_intrinsic_sizes() override {
+        IntrinsicSizes sizes;
+        
+        // Let the style system handle width - it will apply scaling
+        // Don't override with unscaled values
+        // The base class will use our style settings
+        sizes = Container::calculate_intrinsic_sizes();
+        
+        // Height comes from content
+        float height = 0;
+        
+        // Add header height
+        if (header_ && header_->is_visible()) {
+            height += 14.0f;  // Fixed header height
+        }
+        
+        // If expanded, add content height
+        if (state_ == ColumnState::EXPANDED && content_ && content_->is_visible()) {
+            // Call parent's method to calculate children sizes
+            IntrinsicSizes content_sizes = Container::calculate_intrinsic_sizes();
+            height += content_sizes.preferred_height;
+        } else if (state_ == ColumnState::COLLAPSED) {
+            // In collapsed state, calculate height for icons
+            float icon_size = 24.0f;
+            float padding = 6.0f;
+            int icon_count = 0;
+            
+            for (const auto& group : panel_groups_) {
+                for (const auto& panel : group->get_panels()) {
+                    if (!panel->get_icon().empty()) {
+                        icon_count++;
+                    }
+                }
+            }
+            
+            if (icon_count > 0) {
+                height += padding + (icon_size + padding) * icon_count;
+            }
+        }
+        
+        sizes.min_height = height;
+        sizes.preferred_height = height;
+        // Don't limit max height - allow it to grow to fill available space
+        sizes.max_height = std::numeric_limits<float>::max();
+        
+        return sizes;
+    }
+    
 protected:
     void render_content(CanvasRenderer* renderer) override {
-        // Render collapsed state icons if needed
+        // Render background for collapsed state
         if (state_ == ColumnState::COLLAPSED) {
+            // Draw gray_3 background for the icon area (below the header)
+            Rect2D icon_area = get_bounds();
+            float header_height = 14.0f; // Header is 14px tall
+            icon_area.y += header_height;
+            icon_area.height -= header_height;
+            
+            // Use the theme's gray_3 color
+            ColorRGBA gray_3 = renderer->get_scaled_theme().gray_3();
+            renderer->draw_rect(icon_area, gray_3);
+            
+            // Render icons on top of the background
             render_collapsed_icons(renderer);
         }
         
@@ -333,13 +413,10 @@ private:
     
     std::vector<std::shared_ptr<PanelGroup>> panel_groups_;
     
-    // Sizing
-    float collapsed_width_;
-    float expanded_width_;
-    float current_width_;
-    float target_width_;
-    float min_width_;
-    float max_width_;
+    // Sizing - stored in logical pixels (unscaled)
+    float collapsed_user_width_;  // User's resized collapsed width
+    float expanded_user_width_;   // User's resized expanded width
+    float target_width_;          // For animation
     bool animating_ = false;
     
     // Callbacks
@@ -349,25 +426,45 @@ private:
     void update_style_for_state() {
         switch (state_) {
             case ColumnState::COLLAPSED:
-                base_style_.width = SizeValue(collapsed_width_);  // 36px
-                base_style_.min_width = SizeValue(collapsed_width_);
+                if (type_ == ColumnType::TOOL) {
+                    // Tool columns have fixed width
+                    base_style_.width = SizeValue(36);  // Fixed, will be scaled
+                } else {
+                    // Regular columns use remembered width
+                    base_style_.width = SizeValue(collapsed_user_width_);  // Will be scaled
+                    base_style_.min_width = SizeValue(36);
+                    base_style_.max_width = SizeValue(225);
+                }
                 base_style_.set_overflow(WidgetStyle::Overflow::Hidden);
-                current_width_ = collapsed_width_;
                 // Hide content when collapsed - only show header
                 if (content_) {
                     content_->set_visible(false);
                 }
+                // Force style recomputation and layout
+                invalidate_style();
+                invalidate_layout();
                 break;
+                
             case ColumnState::EXPANDED:
-                base_style_.width = SizeValue(expanded_width_);
-                base_style_.min_width = SizeValue(min_width_);
+                if (type_ == ColumnType::TOOL) {
+                    // Tool columns have fixed width
+                    base_style_.width = SizeValue(72);  // Fixed for 2-column grid, will be scaled
+                } else {
+                    // Regular columns use remembered width
+                    base_style_.width = SizeValue(expanded_user_width_);  // Will be scaled
+                    base_style_.min_width = SizeValue(250);
+                    // No max_width for expanded state - unlimited
+                }
                 base_style_.set_overflow(WidgetStyle::Overflow::Visible);
-                current_width_ = expanded_width_;
                 // Show content when expanded
                 if (content_) {
                     content_->set_visible(true);
                 }
+                // Force style recomputation and layout
+                invalidate_style();
+                invalidate_layout();
                 break;
+                
             case ColumnState::HIDDEN:
                 set_visible(false);
                 break;
@@ -379,7 +476,7 @@ private:
         float icon_size = 24.0f;
         float padding = 6.0f;
         Rect2D bounds = get_bounds();
-        float y = bounds.y + padding;
+        float y = bounds.y + header_->get_bounds().height + padding;  // Start after header
         
         for (const auto& group : panel_groups_) {
             for (const auto& panel : group->get_panels()) {

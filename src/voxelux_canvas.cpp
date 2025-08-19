@@ -80,11 +80,25 @@ public:
             
             if (current_size.x != last_size.x || current_size.y != last_size.y) {
                 layout_->on_window_resize(current_size.x, current_size.y);
+                
+                // Immediate refresh after resize (standard UI practice)
+                auto* renderer = window_->get_renderer();
+                if (renderer) {
+                    layout_->refresh_layout(renderer);
+                }
+                
                 last_size = current_size;
             }
             
             if (current_scale != last_scale) {
                 layout_->set_content_scale(current_scale);
+                
+                // Immediate refresh after DPI change (standard UI practice)
+                auto* renderer = window_->get_renderer();
+                if (renderer) {
+                    layout_->refresh_layout(renderer);
+                }
+                
                 last_scale = current_scale;
                 std::cout << "Content scale changed to: " << current_scale << "x" << std::endl;
             }

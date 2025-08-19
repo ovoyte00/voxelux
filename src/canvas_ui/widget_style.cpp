@@ -381,7 +381,10 @@ WidgetStyle::ComputedStyle WidgetStyle::compute(const ScaledTheme& theme,
     // Track the unit type for layout calculations
     switch (width.unit) {
         case SizeValue::Pixels: computed.width_unit = ComputedStyle::PIXELS; break;
-        case SizeValue::Percent: computed.width_unit = ComputedStyle::PERCENT; break;
+        case SizeValue::Percent: 
+            computed.width_unit = ComputedStyle::PERCENT; 
+            computed.width_percent = width.value;  // Store original percentage
+            break;
         case SizeValue::Auto: computed.width_unit = ComputedStyle::AUTO; break;
         case SizeValue::FitContent: computed.width_unit = ComputedStyle::FIT_CONTENT; break;
         case SizeValue::Flex: computed.width_unit = ComputedStyle::FLEX; break;
@@ -390,7 +393,10 @@ WidgetStyle::ComputedStyle WidgetStyle::compute(const ScaledTheme& theme,
     
     switch (height.unit) {
         case SizeValue::Pixels: computed.height_unit = ComputedStyle::PIXELS; break;
-        case SizeValue::Percent: computed.height_unit = ComputedStyle::PERCENT; break;
+        case SizeValue::Percent: 
+            computed.height_unit = ComputedStyle::PERCENT;
+            computed.height_percent = height.value;  // Store original percentage
+            break;
         case SizeValue::Auto: computed.height_unit = ComputedStyle::AUTO; break;
         case SizeValue::FitContent: computed.height_unit = ComputedStyle::FIT_CONTENT; break;
         case SizeValue::Flex: computed.height_unit = ComputedStyle::FLEX; break;

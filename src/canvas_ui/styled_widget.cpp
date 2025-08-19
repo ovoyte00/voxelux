@@ -34,6 +34,13 @@ void StyledWidget::set_style(const WidgetStyle& style) {
 void StyledWidget::invalidate_layout() {
     needs_layout_ = true;
     
+    // Following Blender's approach: reset bounds for children on layout invalidation
+    // This forces complete recalculation without stale position/size data
+    for (auto& child : children_) {
+        child->set_bounds(Rect2D(0, 0, 0, 0));
+        child->invalidate_layout();
+    }
+    
     // Check if we're in a render block's build phase
     RenderBlock* current = RenderBlock::get_current();
     if (!current || !current->is_building()) {
@@ -45,6 +52,15 @@ void StyledWidget::invalidate_layout() {
 
 void StyledWidget::invalidate_style() {
     needs_style_computation_ = true;
+    
+    // Following Blender's approach: clear computed values for full recalculation
+    // This ensures clean resize handling without stale values
+    computed_style_ = WidgetStyle::ComputedStyle();
+    
+    // Cascade to all children - they need to recompute too
+    for (auto& child : children_) {
+        child->invalidate_style();
+    }
     
     // Check if we're in a render block's build phase
     RenderBlock* current = RenderBlock::get_current();
@@ -175,12 +191,19 @@ void StyledWidget::set_bounds(const Rect2D& bounds) {
         // Mark old bounds as dirty
         mark_dirty();
         
+        // Store old size to detect size changes
+        float old_width = bounds_.width;
+        float old_height = bounds_.height;
+        
         bounds_ = bounds;
         
         // Mark new bounds as dirty  
         mark_dirty();
         
-        invalidate_layout();
+        // If size changed, we need to invalidate layout
+        if (old_width != bounds.width || old_height != bounds.height) {
+            invalidate_layout();
+        }
     }
 }
 
@@ -230,12 +253,47 @@ Rect2D StyledWidget::get_padding_bounds() const {
     );
 }
 
+// Debug flags for resize issues (defined in voxelux_layout.cpp)
+bool has_resized = false;
+bool has_resized_2 = false;
+bool has_resized_3 = false;
+bool has_resized_4 = false;
+
 // Calculate intrinsic sizes (Pass 1 - bottom-up)
 StyledWidget::IntrinsicSizes StyledWidget::calculate_intrinsic_sizes() {
     IntrinsicSizes sizes;
+    if (has_resized && (id_ == "dock-container-left" || id_ == "dock-container-right")) {
+        std::cout << "[INTRINSIC] " << id_ << " - computed width: " << computed_style_.width 
+                  << " (unit: " << computed_style_.width_unit << ")" << std::endl;
+    }
+    
+    // Check if we're a flex item with flex-grow > 0
+    bool is_flex_item = false;
+    bool parent_is_row = false;
+    bool parent_is_column = false;
+    
+    if (parent_ && parent_->get_computed_style().display == WidgetStyle::Display::Flex) {
+        is_flex_item = true;
+        parent_is_row = (parent_->get_computed_style().flex_direction == WidgetStyle::FlexDirection::Row ||
+                        parent_->get_computed_style().flex_direction == WidgetStyle::FlexDirection::RowReverse);
+        parent_is_column = !parent_is_row;
+    }
+    
+    // First, check if we have content (like text) that determines our natural size
+    // This is the base content size - widgets override get_content_size() to provide their content
+    Point2D content_size = get_content_size();
+    if (content_size.x > 0 || content_size.y > 0) {
+        // We have content! Use it as our base size
+        sizes.preferred_width = content_size.x;
+        sizes.preferred_height = content_size.y;
+        sizes.min_width = content_size.x;
+        sizes.min_height = content_size.y;
+    }
     
     // Start with style-defined sizes if available
-    if (computed_style_.width > 0) {
+    // IMPORTANT: Only use computed width/height for PIXELS units
+    // AUTO and PERCENT should calculate from content, not use resolved values
+    if (computed_style_.width_unit == WidgetStyle::ComputedStyle::PIXELS && computed_style_.width > 0) {
         sizes.min_width = sizes.preferred_width = sizes.max_width = computed_style_.width;
     }
     if (computed_style_.min_width > 0) {
@@ -245,7 +303,7 @@ StyledWidget::IntrinsicSizes StyledWidget::calculate_intrinsic_sizes() {
         sizes.max_width = computed_style_.max_width;
     }
     
-    if (computed_style_.height > 0) {
+    if (computed_style_.height_unit == WidgetStyle::ComputedStyle::PIXELS && computed_style_.height > 0) {
         sizes.min_height = sizes.preferred_height = sizes.max_height = computed_style_.height;
     }
     if (computed_style_.min_height > 0) {
@@ -254,6 +312,10 @@ StyledWidget::IntrinsicSizes StyledWidget::calculate_intrinsic_sizes() {
     if (computed_style_.max_height < std::numeric_limits<float>::max()) {
         sizes.max_height = computed_style_.max_height;
     }
+    
+    // Note: flex-grow does NOT affect intrinsic size calculation
+    // Intrinsic size is always the natural content size
+    // flex-grow only affects how remaining space is distributed AFTER initial sizing
     
     // If no explicit size, calculate based on children
     if (sizes.preferred_width == 0 || sizes.preferred_height == 0) {
@@ -284,7 +346,8 @@ StyledWidget::IntrinsicSizes StyledWidget::calculate_intrinsic_sizes() {
             
             // Add gaps
             if (child_sizes.size() > 1) {
-                float gap = computed_style_.gap_pixels;
+                // Use the correct gap based on flex direction
+                float gap = is_row ? computed_style_.column_gap_pixels : computed_style_.row_gap_pixels;
                 if (is_row) {
                     total_width += gap * (child_sizes.size() - 1);
                 } else {
@@ -329,6 +392,11 @@ StyledWidget::IntrinsicSizes StyledWidget::calculate_intrinsic_sizes() {
     sizes.min_height += margin_height;
     sizes.preferred_height += margin_height;
     
+    // Debug key containers after resize  
+    if (has_resized_2 && (id_ == "dock-container-left" || id_ == "dock-container-right")) {
+        std::cout << "  [RESULT] " << id_ << " preferred: " << sizes.preferred_width << "x" << sizes.preferred_height << std::endl;
+    }
+    
     return sizes;
 }
 
@@ -337,14 +405,43 @@ void StyledWidget::resolve_sizes(float available_width, float available_height) 
     // Use intrinsic sizes as a starting point
     IntrinsicSizes intrinsic = calculate_intrinsic_sizes();
     
+    // Debug after resize
+    if (has_resized_3 && (id_ == "dock-container-left" || id_ == "dock-container-right")) {
+        std::cout << "[RESOLVE] " << id_ << " - available: " << available_width 
+                  << ", intrinsic: " << intrinsic.preferred_width 
+                  << ", unit: " << computed_style_.width_unit << std::endl;
+    }
+    
     // Resolve width
+    // Check if we're a flex item with flex-grow in parent's main axis
+    bool is_flex_item_main_axis_width = false;
+    if (parent_ && parent_->get_computed_style().display == WidgetStyle::Display::Flex) {
+        bool parent_is_row = (parent_->get_computed_style().flex_direction == WidgetStyle::FlexDirection::Row ||
+                             parent_->get_computed_style().flex_direction == WidgetStyle::FlexDirection::RowReverse);
+        if (parent_is_row && computed_style_.flex_grow > 0) {
+            is_flex_item_main_axis_width = true;
+        }
+    }
+    
     float resolved_width = bounds_.width;
-    if (computed_style_.width_unit == WidgetStyle::ComputedStyle::AUTO) {
-        resolved_width = intrinsic.preferred_width;
+    if (is_flex_item_main_axis_width) {
+        // Flex items with flex-grow will have their width set by the parent
+        // For now, use intrinsic as a placeholder (will be overridden by flex layout)
+        // Don't use available_width as that would make it too large before flex calculation
+        resolved_width = (bounds_.width > 0) ? bounds_.width : intrinsic.preferred_width;
+        if (resolved_width == 0) {
+            // If intrinsic is 0 (due to flex-grow), use a minimal width
+            resolved_width = intrinsic.min_width > 0 ? intrinsic.min_width : 1.0f;
+        }
+    } else if (computed_style_.width_unit == WidgetStyle::ComputedStyle::AUTO) {
+        // If parent has already set our width (e.g., through flex stretch), keep it
+        // Otherwise use intrinsic width
+        resolved_width = (bounds_.width > 0) ? bounds_.width : intrinsic.preferred_width;
     } else if (computed_style_.width_unit == WidgetStyle::ComputedStyle::PERCENT) {
-        resolved_width = available_width * (computed_style_.width / 100.0f);
-    } else if (computed_style_.width_unit == WidgetStyle::ComputedStyle::PIXELS && bounds_.width == 0) {
-        // Only use computed width if bounds haven't been set by parent
+        // Use the stored percentage value
+        resolved_width = available_width * (computed_style_.width_percent / 100.0f);
+    } else if (computed_style_.width_unit == WidgetStyle::ComputedStyle::PIXELS) {
+        // Use computed width (even if bounds are set, respect explicit pixel values)
         resolved_width = computed_style_.width;
     }
     
@@ -352,13 +449,34 @@ void StyledWidget::resolve_sizes(float available_width, float available_height) 
     resolved_width = std::max(intrinsic.min_width, std::min(intrinsic.max_width, resolved_width));
     
     // Resolve height
+    // Check if we're a flex item with flex-grow in parent's main axis
+    bool is_flex_item_main_axis = false;
+    if (parent_ && parent_->get_computed_style().display == WidgetStyle::Display::Flex) {
+        bool parent_is_column = (parent_->get_computed_style().flex_direction == WidgetStyle::FlexDirection::Column ||
+                                parent_->get_computed_style().flex_direction == WidgetStyle::FlexDirection::ColumnReverse);
+        if (parent_is_column && computed_style_.flex_grow > 0) {
+            is_flex_item_main_axis = true;
+        }
+    }
+    
     float resolved_height = bounds_.height;
-    if (computed_style_.height_unit == WidgetStyle::ComputedStyle::AUTO) {
-        resolved_height = intrinsic.preferred_height;
+    if (is_flex_item_main_axis) {
+        // Flex items with flex-grow will have their height set by the parent
+        // For now, use intrinsic as a placeholder (will be overridden by flex layout)
+        resolved_height = (bounds_.height > 0) ? bounds_.height : intrinsic.preferred_height;
+        if (resolved_height == 0) {
+            // If intrinsic is 0 (due to flex-grow), use a minimal height
+            resolved_height = intrinsic.min_height > 0 ? intrinsic.min_height : 1.0f;
+        }
+    } else if (computed_style_.height_unit == WidgetStyle::ComputedStyle::AUTO) {
+        // If parent has already set our height (e.g., through flex stretch), keep it
+        // Otherwise use intrinsic height
+        resolved_height = (bounds_.height > 0) ? bounds_.height : intrinsic.preferred_height;
     } else if (computed_style_.height_unit == WidgetStyle::ComputedStyle::PERCENT) {
-        resolved_height = available_height * (computed_style_.height / 100.0f);
-    } else if (computed_style_.height_unit == WidgetStyle::ComputedStyle::PIXELS && bounds_.height == 0) {
-        // Only use computed height if bounds haven't been set by parent
+        // Use the stored percentage value
+        resolved_height = available_height * (computed_style_.height_percent / 100.0f);
+    } else if (computed_style_.height_unit == WidgetStyle::ComputedStyle::PIXELS) {
+        // Use computed height (even if bounds are set, respect explicit pixel values)
         resolved_height = computed_style_.height;
     }
     
@@ -369,6 +487,11 @@ void StyledWidget::resolve_sizes(float available_width, float available_height) 
     // Only update size, not position
     bounds_.width = resolved_width;
     bounds_.height = resolved_height;
+    
+    // Debug after resize
+    if (has_resized_4 && (id_ == "dock-container-left" || id_ == "dock-container-right")) {
+        std::cout << "  [RESOLVED] " << id_ << ": " << bounds_.width << "x" << bounds_.height << std::endl;
+    }
 }
 
 // Position children (Pass 3)
@@ -745,10 +868,6 @@ void StyledWidget::render_content(CanvasRenderer* renderer) {
 }
 
 void StyledWidget::render_children(CanvasRenderer* renderer) {
-    // Debug output disabled
-    if (!children_.empty()) {
-    }
-    
     for (auto& child : children_) {
         if (child->is_visible()) {
             child->render(renderer);
@@ -1028,11 +1147,18 @@ bool StyledWidget::handle_event(const InputEvent& event) {
 }
 
 void StyledWidget::perform_layout() {
-    // First, ensure our style is computed
+    // Skip if style isn't computed yet (will be done during render)
     if (needs_style_computation_) {
-        // Need access to theme - this should be passed down
-        // For now, we'll require compute_style to be called before layout
         return;
+    }
+    
+    // Debug output for root container on resize
+    if (id_ == "voxelux-layout" || id_ == "main-content" || id_ == "menubar") {
+        std::cout << "[LAYOUT] " << id_ << " performing layout:" << std::endl;
+        std::cout << "  Current bounds: " << bounds_.x << "," << bounds_.y 
+                  << " " << bounds_.width << "x" << bounds_.height << std::endl;
+        std::cout << "  needs_style: " << needs_style_computation_ 
+                  << " needs_layout: " << needs_layout_ << std::endl;
     }
     
     // Debug: Check computed values for menu buttons
@@ -1047,29 +1173,35 @@ void StyledWidget::perform_layout() {
     IntrinsicSizes intrinsic = calculate_intrinsic_sizes();
     
     // Pass 2: Resolve sizes based on constraints
-    // If we're the root or have explicit sizes, use those
-    // Otherwise use parent's content bounds
+    // Determine available space based on parent and our size unit
     float available_width = bounds_.width;
     float available_height = bounds_.height;
     
     if (parent_) {
         Rect2D parent_content = parent_->get_content_bounds();
-        if (computed_style_.width_unit == WidgetStyle::ComputedStyle::AUTO) {
+        
+        // For AUTO or PERCENT units, we need parent's dimensions
+        if (computed_style_.width_unit == WidgetStyle::ComputedStyle::AUTO ||
+            computed_style_.width_unit == WidgetStyle::ComputedStyle::PERCENT) {
             available_width = parent_content.width;
         }
-        if (computed_style_.height_unit == WidgetStyle::ComputedStyle::AUTO) {
+        
+        if (computed_style_.height_unit == WidgetStyle::ComputedStyle::AUTO ||
+            computed_style_.height_unit == WidgetStyle::ComputedStyle::PERCENT) {
             available_height = parent_content.height;
         }
     }
     
     resolve_sizes(available_width, available_height);
     
-    // Pass 3: Position children
+    // Pass 3: Position children (this sets child bounds)
     position_children();
     
-    // Recursively layout children with multi-pass
+    // Recursively layout children
     for (auto& child : children_) {
-        child->perform_layout();
+        if (child->needs_layout()) {
+            child->perform_layout();
+        }
     }
     
     needs_layout_ = false;
@@ -1496,6 +1628,21 @@ void StyledWidget::layout_inline() {
 void StyledWidget::layout_flex() {
     Rect2D content_bounds = get_content_bounds();
     
+    // Debug layout
+    if (id_ == "main-content" || id_ == "voxelux-layout") {
+        std::cout << "Layout " << id_ << ": full bounds=" << bounds_.x << "," << bounds_.y 
+                  << " " << bounds_.width << "x" << bounds_.height 
+                  << ", content bounds=" << content_bounds.x << "," << content_bounds.y 
+                  << " " << content_bounds.width << "x" << content_bounds.height << std::endl;
+        std::cout << "  Children: " << children_.size() << std::endl;
+        for (const auto& child : children_) {
+            if (child->is_visible()) {
+                std::cout << "    - " << child->get_id() << " type: " << child->get_widget_type() 
+                          << " flex-grow: " << child->get_style().flex_grow << std::endl;
+            }
+        }
+    }
+    
     // Prepare flex items
     std::vector<FlexItem> flex_items;
     for (auto& child : children_) {
@@ -1542,17 +1689,79 @@ void StyledWidget::layout_flex() {
         
         // Store margins separately - they affect positioning but not the widget's own size
         if (is_row) {
-            item.flex_basis = (child_style.width > 0) ? child_style.width : content_width;
-            item.cross_size = (child_style.height > 0) ? child_style.height : content_height;
+            // For flex-basis, use intrinsic size calculation which accounts for flex-grow
+            IntrinsicSizes child_intrinsic = child->calculate_intrinsic_sizes();
+            
+            // Flex basis determination for row layout (width is main axis)
+            if (child_style.width_unit == WidgetStyle::ComputedStyle::PIXELS && child_style.width > 0) {
+                // Explicit width set (fixed pixel size)
+                item.flex_basis = child_style.width;
+            } else {
+                // AUTO or PERCENT - use intrinsic preferred width
+                // Don't use child_style.width here as it contains old resolved values
+                item.flex_basis = child_intrinsic.preferred_width > 0 ? child_intrinsic.preferred_width : content_width;
+            }
+            
+            // Ensure min-width is respected as a minimum
+            if (child_style.min_width > 0) {
+                item.flex_basis = std::max(item.flex_basis, child_style.min_width);
+            }
+            
+            // For cross axis (height in row layout), check for percentage heights
+            if (child_style.height_unit == WidgetStyle::ComputedStyle::PERCENT) {
+                // Use the parent's content height * percentage
+                item.cross_size = content_bounds.height * (child_style.height_percent / 100.0f);
+            } else if (child_style.height_unit == WidgetStyle::ComputedStyle::PIXELS && child_style.height > 0) {
+                // Explicit height in pixels
+                item.cross_size = child_style.height;
+            } else {
+                // AUTO - use content height
+                item.cross_size = content_height;
+            }
+            // In row layout, min-height only respected if NOT stretching (handled in position_flex_line)
             item.margin_before = child_style.margin_left;
             item.margin_after = child_style.margin_right;
             item.margin_cross_before = child_style.margin_top;
             item.margin_cross_after = child_style.margin_bottom;
             
-            // Layout calculation complete for this item
+            // Debug for flex items
+            if (id_ == "main-content") {
+                std::cout << "  " << child->get_id() << " flex item: basis=" << item.flex_basis 
+                          << " grow=" << item.flex_grow << " intrinsic.pref=" << child_intrinsic.preferred_width 
+                          << " width_unit=" << child_style.width_unit << " width=" << child_style.width
+                          << " margins=" << item.margin_before << "," << item.margin_after << std::endl;
+            }
         } else {
-            item.flex_basis = (child_style.height > 0) ? child_style.height : content_height;
-            item.cross_size = (child_style.width > 0) ? child_style.width : content_width;
+            // For flex-basis, use intrinsic size calculation which accounts for flex-grow
+            IntrinsicSizes child_intrinsic = child->calculate_intrinsic_sizes();
+            
+            // Flex basis determination for column layout (height is main axis)
+            if (child_style.height_unit == WidgetStyle::ComputedStyle::PIXELS && child_style.height > 0) {
+                // Explicit height set (fixed pixel size)
+                item.flex_basis = child_style.height;
+            } else {
+                // AUTO or PERCENT - use intrinsic preferred height
+                // Don't use child_style.height here as it contains old resolved values
+                item.flex_basis = child_intrinsic.preferred_height > 0 ? child_intrinsic.preferred_height : content_height;
+            }
+            
+            // Ensure min-height is respected as a minimum
+            if (child_style.min_height > 0) {
+                item.flex_basis = std::max(item.flex_basis, child_style.min_height);
+            }
+            
+            // For cross axis (width in column layout), check for percentage widths
+            if (child_style.width_unit == WidgetStyle::ComputedStyle::PERCENT) {
+                // Use the parent's content width * percentage
+                item.cross_size = content_bounds.width * (child_style.width_percent / 100.0f);
+            } else if (child_style.width_unit == WidgetStyle::ComputedStyle::PIXELS && child_style.width > 0) {
+                // Explicit width in pixels
+                item.cross_size = child_style.width;
+            } else {
+                // AUTO - use content width
+                item.cross_size = content_width;
+            }
+            // In column layout, min-width only respected if NOT stretching (handled in position_flex_line)
             item.margin_before = child_style.margin_top;
             item.margin_after = child_style.margin_bottom;
             item.margin_cross_before = child_style.margin_left;
@@ -1577,6 +1786,17 @@ void StyledWidget::layout_flex() {
     // In column direction: row-gap between items, column-gap between lines
     float item_gap = is_row ? computed_style_.column_gap_pixels : computed_style_.row_gap_pixels;
     float line_gap = is_row ? computed_style_.row_gap_pixels : computed_style_.column_gap_pixels;
+    
+    // Debug gap values for dock containers
+    if (id_ == "dock-container") {
+        std::cout << "DockContainer gap debug:" << std::endl;
+        std::cout << "  gap_pixels: " << computed_style_.gap_pixels << std::endl;
+        std::cout << "  column_gap_pixels: " << computed_style_.column_gap_pixels << std::endl;
+        std::cout << "  row_gap_pixels: " << computed_style_.row_gap_pixels << std::endl;
+        std::cout << "  item_gap (used): " << item_gap << std::endl;
+        std::cout << "  is_row: " << is_row << std::endl;
+        std::cout << "  Number of children: " << flex_items.size() << std::endl;
+    }
     
     // Group items into lines if wrapping is enabled
     std::vector<FlexLine> lines;
@@ -1849,7 +2069,8 @@ void StyledWidget::position_flex_line(const FlexLine& line, const Rect2D& conten
                 break;
             case WidgetStyle::AlignItems::Stretch:
                 item_cross_pos += item->margin_cross_before;
-                // TODO: Actually stretch the item's cross size
+                // Stretch the item to fill the available cross-axis space
+                item->cross_size = line_cross_size - item->margin_cross_before - item->margin_cross_after;
                 break;
             case WidgetStyle::AlignItems::Baseline:
                 // Baseline alignment
@@ -1876,12 +2097,34 @@ void StyledWidget::position_flex_line(const FlexLine& line, const Rect2D& conten
             child_bounds = Rect2D(main_pos, item_cross_pos, item->main_size, item->cross_size);
         } else {
             child_bounds = Rect2D(item_cross_pos, main_pos, item->cross_size, item->main_size);
+            // Debug for voxelux-layout setting main-content bounds
+            if (id_ == "voxelux-layout" && item->widget->get_id() == "main-content") {
+                std::cout << "  voxelux-layout setting main-content bounds: " 
+                          << child_bounds.x << "," << child_bounds.y 
+                          << " " << child_bounds.width << "x" << child_bounds.height 
+                          << " (cross_size=" << item->cross_size << ", line_cross=" << line_cross_size << ")" << std::endl;
+            }
         }
         
+        // Debug bounds for main-content and dock-container children
+        if (id_ == "main-content" || id_ == "dock-container") {
+            std::cout << "  [" << id_ << "] Setting " << item->widget->get_id() << " bounds: " 
+                      << child_bounds.x << "," << child_bounds.y 
+                      << " " << child_bounds.width << "x" << child_bounds.height << std::endl;
+            if (i < line.items.size() - 1) {
+                std::cout << "    Adding gap of " << item_gap << " pixels between items" << std::endl;
+                std::cout << "    Next item will start at main_pos=" << (main_pos + item->main_size + item->margin_after + item_gap) << std::endl;
+            }
+        }
         item->widget->set_bounds(child_bounds);
         
         // Move to next position
-        main_pos += item->main_size + item->margin_after + item_gap;
+        main_pos += item->main_size + item->margin_after;
+        
+        // Add gap only between items (not after the last one)
+        if (i < line.items.size() - 1) {
+            main_pos += item_gap;
+        }
         
         // Add extra space for justify-content
         if (computed_style_.justify_content == WidgetStyle::JustifyContent::SpaceBetween && i < line.items.size() - 1) {
@@ -2099,8 +2342,14 @@ void StyledWidget::position_flex_items(const std::vector<FlexItem>& items) {
         item.widget->set_bounds(child_bounds);
         
         
-        // Move to next position (widget size + margin after + gap)
-        main_pos += item.main_size + item.margin_after + computed_style_.gap_pixels;
+        // Move to next position (widget size + margin after)
+        main_pos += item.main_size + item.margin_after;
+        
+        // Add gap only between items (not after the last one)
+        if (i < items.size() - 1) {
+            float gap = is_row ? computed_style_.column_gap_pixels : computed_style_.row_gap_pixels;
+            main_pos += gap;
+        }
         
         // Add extra space for justify-content
         if (computed_style_.justify_content == WidgetStyle::JustifyContent::SpaceBetween && i < items.size() - 1) {

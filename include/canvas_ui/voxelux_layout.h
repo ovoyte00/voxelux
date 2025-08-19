@@ -14,6 +14,7 @@
 #include "dock_container.h"
 #include "dock_column.h"
 #include "viewport_3d_editor.h"
+#include "scaled_theme.h"
 #include <memory>
 #include <vector>
 #include <cmath>
@@ -77,18 +78,30 @@ public:
     }
     
     // Update layout when window resizes
-    void on_window_resize(float width, float height) {
-        window_width_ = width;
-        window_height_ = height;
-        set_bounds(Rect2D(0, 0, width, height));
-        invalidate_layout();
+    void on_window_resize(float width, float height);  // Implementation in .cpp for debug flags
+    
+    // Force immediate layout update (professional UI pattern)
+    void refresh_layout(CanvasRenderer* renderer) {
+        if (needs_immediate_refresh_ && renderer) {
+            // Immediate refresh pattern used by professional applications
+            // This happens immediately, not deferred to render
+            needs_immediate_refresh_ = false;
+            
+            // Force immediate style and layout computation
+            ScaledTheme scaled_theme(renderer->get_theme(), content_scale_);
+            compute_style(scaled_theme);
+            perform_layout();
+        }
     }
     
     // Set content scale for high-DPI displays
     void set_content_scale(float scale) {
-        content_scale_ = scale;
-        // TODO: Update theme scale
-        invalidate_layout();
+        if (content_scale_ != scale) {
+            content_scale_ = scale;
+            // When DPI changes, we need to recompute all styles with new scale
+            invalidate_style();  // This will cascade to all children
+            invalidate_layout(); // Then re-layout with new sizes
+        }
     }
     
     // Render all UI components  
@@ -240,10 +253,12 @@ private:
         main_content_ = LayoutBuilder::row();
         main_content_->set_id("main-content");
         main_content_->get_style()
-            .set_flex_grow(1);  // Take remaining vertical space
+            .set_flex_grow(1)  // Take remaining vertical space
+            .set_gap(SpacingValue::theme_xs());
         
         // Create left dock
         left_dock_ = std::make_shared<DockContainer>(DockContainer::DockSide::LEFT);
+        left_dock_->set_id("dock-container-left");
         
         // Add tool palette to left dock
         auto tool_column = left_dock_->add_column(DockColumn::ColumnType::TOOL);
@@ -279,8 +294,8 @@ private:
         center_area->set_id("center-area");
         center_area->get_style()
             .set_flex_grow(1)  // Take remaining horizontal space
-            .set_flex_shrink(1)  // Allow shrinking if needed
-            .set_width(SizeValue(0));  // Start with 0 width, let flex-grow expand it
+            .set_flex_shrink(1);  // Allow shrinking if needed
+            // Don't set width - let AUTO and flex-grow handle it
         
         // FILE TABS - Above the viewport in center area
         file_tabs_ = create_widget<TabContainer>(true);  // true = file tabs style
@@ -305,6 +320,7 @@ private:
         
         // Create right dock
         right_dock_ = std::make_shared<DockContainer>(DockContainer::DockSide::RIGHT);
+        right_dock_->set_id("dock-container-right");
         
         // Add a column with properties and materials panels
         auto props_column = right_dock_->add_column(DockColumn::ColumnType::REGULAR);
@@ -413,6 +429,9 @@ private:
     
     // Viewport (special handling as it's not a styled widget yet)
     std::unique_ptr<Viewport3DEditor> viewport_;
+    
+    // Flag for immediate refresh after resize
+    bool needs_immediate_refresh_ = false;
 };
 
 } // namespace voxel_canvas

@@ -39,12 +39,14 @@ public:
                 base_style_.flex_direction = WidgetStyle::FlexDirection::Row;
                 base_style_.width = SizeValue::auto_size();  // Auto-size based on content
                 base_style_.height = SizeValue::percent(100);
+                base_style_.set_gap(SpacingValue::theme_xs());  // gap between columns (2px via theme)
                 break;
             case DockSide::BOTTOM:
                 base_style_.display = WidgetStyle::Display::Flex;
                 base_style_.flex_direction = WidgetStyle::FlexDirection::Column;
                 base_style_.width = SizeValue::percent(100);
                 base_style_.height = SizeValue::auto_size();
+                base_style_.set_gap(SpacingValue::theme_xs());  // gap between rows (2px via theme)
                 break;
         }
         
@@ -54,7 +56,7 @@ public:
         base_style_.outline.color = ColorValue("gray_5");
         base_style_.outline.style = WidgetStyle::OutlineStyle::Style::Solid;
         base_style_.outline.alignment = WidgetStyle::OutlineStyle::Alignment::Center;
-        base_style_.gap = SpacingValue(0);  // No gap between columns - they touch
+        // Gap is already set above based on side (2px for LEFT/RIGHT, 0 for BOTTOM)
     }
     
     ~DockContainer() override = default;
